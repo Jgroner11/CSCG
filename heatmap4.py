@@ -123,7 +123,6 @@ def plot_reasoning(seq, target):
             prod_ax.set_title(f'product, t={t}')
             prod_fig.canvas.draw()
 
-            t += 1
             print('\n')
 
     forward_fig.canvas.mpl_connect('key_press_event', update_image)

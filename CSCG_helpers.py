@@ -255,6 +255,38 @@ class Reasoning:
         V = V_init
         for i in range(n_iters):
             V = Reasoning.updateV(V, V_init, chmm.C)
+
+    @staticmethod
+    def sigmoid(x):
+        return 1 / (1 + np.exp(-x))
+
     
+    @staticmethod
+    def STP(v, T):
 
+        v_ = np.zeros(v.shape)
+        for i in range(T.shape[0]):
+            v_ += T[i] @ v
+        v_ = np.minimum(np.maximum(v_, 0), 1)
 
+        ve = np.tile(v, (len(v), 1)).T
+
+        T_ = np.zeros(T.shape)
+        for i in range(T.shape[0]):
+            T_[i] = T[i] - ve * T[i].T
+            # T_[i][T_[i] < 0] = 0
+
+        return v_, T_
+
+    
+    @staticmethod
+    def forward(v, T, v_init):
+        v_ = np.zeros(v.shape)
+        for i in range(T.shape[0]):
+            v_ += v @ T[i]
+        v_ = np.minimum(np.maximum(v_, 0), 1)
+        # v_ = np.maximum(v_, 0)
+
+        # v_ = softmax(v_)
+
+        return v_
