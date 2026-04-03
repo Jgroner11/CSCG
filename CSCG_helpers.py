@@ -7,7 +7,6 @@ from matplotlib import cm, colors
 import matplotlib.image as mpimg
 import sys, os, pickle
 import math
-from scipy.special import softmax
 
 class Plotting:
     custom_colors = (
@@ -37,8 +36,17 @@ class Plotting:
         return new_x, new_y
     
     @staticmethod
+    def flip(x, y, axis=0):
+        if axis == 0:
+            return -x, y
+        elif axis == 1:
+            return x, -y
+        else:
+            return x, y
+    
+    @staticmethod
     def plot_graph(
-        chmm, x, a, output_file, cmap=cm.Spectral, multiple_episodes=False, vertex_size=30, rotation = 0
+        chmm, x, a, output_file, cmap=cm.Spectral, multiple_episodes=False, vertex_size=30, flip=None, rotation = 0.
     ):
         n_clones = chmm.n_clones
         states = chmm.decode(x, a)[1]
@@ -58,10 +66,13 @@ class Plotting:
             node_labels -= 1
         colors = [cmap(nl)[:3] for nl in node_labels / node_labels.max()]
 
+        layout = [Plotting.flip(x, y, flip) for x, y in g.layout("kamada_kawai")]
+        layout = [Plotting.rotate(x, y, 90 * rotation) for x, y in layout]
+
         out = igraph.plot(
             g,
             output_file,
-            layout=[Plotting.rotate(x, y, 90 * rotation) for x, y in g.layout("kamada_kawai")],
+            layout=layout,
             vertex_color=colors,
             vertex_label=v,
             vertex_size=vertex_size,
@@ -72,7 +83,7 @@ class Plotting:
 
     @staticmethod
     def plot_heat_map(
-        chmm, x, a, V, output_file, multiple_episodes=False, vertex_size=30, rotation = 0
+        chmm, x, a, V, output_file, multiple_episodes=False, vertex_size=30, flip=None, rotation = 0.
     ):
         # States is a list of which latent node (ie state) is most active at each time step
         states = chmm.decode(x, a)[1]
@@ -103,10 +114,13 @@ class Plotting:
 
         g = igraph.Graph.Adjacency((A > 0).tolist())
 
+        layout = [Plotting.flip(x, y, flip) for x, y in g.layout("kamada_kawai")]
+        layout = [Plotting.rotate(x, y, 90 * rotation) for x, y in layout]
+
         out = igraph.plot(
             g,
             output_file,
-            layout=[Plotting.rotate(x, y, 90 * rotation) for x, y in g.layout("kamada_kawai")],
+            layout=layout,
             vertex_color=colors,
             vertex_label=v,
             vertex_size=vertex_size,
@@ -285,8 +299,62 @@ class Reasoning:
         for i in range(T.shape[0]):
             v_ += v @ T[i]
         v_ = np.minimum(np.maximum(v_, 0), 1)
-        # v_ = np.maximum(v_, 0)
-
-        # v_ = softmax(v_)
 
         return v_
+    
+    @staticmethod
+    def select_action(v, T):
+        num_actions = T.shape[0]
+        action_vector = np.zeros(num_actions)
+        for i in range(num_actions):
+            action_vector[i] = sum(np.maximum(v @ T[i], 0))
+        print('action values:', action_vector)
+        return np.argmax(action_vector)
+    
+    @staticmethod
+    def get_obs(x, n_clones):
+        """Get observation of a latent state x"""
+        lower = 0
+        
+        for i, amt in enumerate(n_clones):
+            upper = lower + amt
+            if x in range(lower, upper):
+                return i
+            lower = upper
+        return None
+
+    @staticmethod
+    def plan_path(x, T, n_clones, termination_threshold = .01, max_depth=50):
+        state_seq = []
+        obs_seq = []
+        action_seq = []
+        num_actions = T.shape[0]
+
+        T_sum = np.sum(T, axis=0)
+
+        found_target = False
+        while not found_target and len(action_seq) < max_depth:
+            row = T_sum[x]
+            id = np.argmax(row) 
+            val = row[id]
+
+            action_vals = np.zeros(num_actions)
+            for i in range(num_actions):
+                action_vals[i] = T[i][x][id]
+
+            action = int(np.argmax(action_vals))
+            x = int(id)
+
+            if val <= termination_threshold:
+                found_target = True
+            else:
+                state_seq.append(x)
+                obs_seq.append(Reasoning.get_obs(x, n_clones))
+                action_seq.append(action)
+   
+        return state_seq, obs_seq, action_seq
+
+
+
+
+

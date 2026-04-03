@@ -180,6 +180,19 @@ class CHMM(object):
         )
         states = backtrace(self.T, self.n_clones, x, a, mess_fwd)
         return -log2_lik, states
+    
+    def jacob_decode(self, x, a):
+        """Compute the MAP assignment of latent variables using max-product message passing."""
+        log2_lik, mess_fwd = forward_mp(
+            self.T.transpose(0, 2, 1),
+            self.Pi_x,
+            self.n_clones,
+            x,
+            a,
+            store_messages=True,
+        )
+        states = backtrace(self.T, self.n_clones, x, a, mess_fwd)
+        return -log2_lik, states, mess_fwd
 
     def decodeE(self, E, x, a):
         """Compute the MAP assignment of latent variables using max-product message passing

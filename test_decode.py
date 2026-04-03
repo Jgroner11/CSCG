@@ -10,38 +10,76 @@ import math
 from chmm_actions import CHMM, forwardE, datagen_structured_obs_room
 from CSCG_helpers import Plotting, Reasoning
 
-def plot_reasoning(seq):
-    mess_fwd = Reasoning.get_mess_fwd(chmm, seq, pseudocount_E=0.1)
-    V_init = mess_fwd[-1]
-    img_path = "figures\\reasoning_fig.png"
+def save_image(t, file, rotation=0):
+    V = mess_fwd[t]
     graph = Plotting.plot_heat_map(
-        chmm, x, a, V_init, output_file=img_path, flip = True, rotation = .83
+        chmm, x, a, V, output_file=file, rotation=rotation
     )
+    
+
+def plot_path(start = None, plot_location=True, rotation = 0):
+    if start is None:
+        start = 0
+    end = len(mess_fwd)
+    img_path = "figures\\plot_fig.png"
+    save_image(start, img_path, rotation=rotation)
     image = mpimg.imread(img_path)
     fig, ax = plt.subplots()
     ax.axis('off')
-    t = 0
-    ax.set_title(f't={t}')
+    ax.set_title(f'mess_fwd activity at t={start}')
     img_display = ax.imshow(image, cmap='viridis')
     cbar = plt.colorbar(img_display, ax=ax, orientation='vertical')
 
-    V = V_init
+    probs = decode_mess_fwd[0:25]
+    print(probs)
+    print('obs:', x[0])
+    # print(sum(probs))
+
+    i = 25
+
+    if plot_location:
+        location_fig, location_ax, text = Plotting.plot_room(room, pos=(rc[start, 0], rc[start, 1]), t=start)
+    t = start
     def update_image(event):
         """Updates the plot with the next image when the specified key is pressed."""
-        nonlocal V, t
-        if event.key == 'n':  # 'n' key for next image
-            V = Reasoning.forwardV(V, V_init, chmm.T)
-            t += 1
-            ax.set_title(f't={t}')
-            print(sum(V_init), sum(V))
-            graph = Plotting.plot_heat_map(
-                chmm, x, a, V, output_file=img_path, flip = True, rotation = .83
-            )
+        nonlocal t, text, location_ax, i
+        if event.key == 'n' or event.key == 'b':  # 'n' key for next time step, 'b' key to back one time step 
+            if event.key == 'n' and t < end:
+                t += 1
+            elif event.key == 'b' and t > 0:
+                t -= 1
+            save_image(t, img_path, rotation=rotation)
             new_image = mpimg.imread(img_path)
             img_display.set_data(new_image)
+            ax.set_title(f'mess_fwd activity at t={t}')
+
+            
+
+
+            obs = x[t]
+            len_clones = chmm.n_clones[obs]
+            probs = decode_mess_fwd[i: i + len_clones]
+
+            mf = np.zeros(125)
+            start_ = sum(n_clones[:obs])
+            end_ = start_ + len_clones
+            mf[start_:end_] = probs
+
+            print(states[t])
+            nonzero_indices = np.nonzero(mf)
+
+            print("Indices of non-zero elements:", nonzero_indices)
+
+            i += len_clones
+
+            # print(sum(probs))
+
             fig.canvas.draw()
+            if plot_location:
+                text = Plotting.redraw_room(location_fig, location_ax, (rc[t, 0], rc[t, 1]), old_text=text, t=t)
 
     fig.canvas.mpl_connect('key_press_event', update_image)
+    location_fig.canvas.mpl_connect('key_press_event', update_image)
     plt.show()
 
 retrain_models = False
@@ -65,6 +103,7 @@ custom_colors = (
 
 Plotting.custom_colors = custom_colors
 
+
 simple_granular_room = np.array(
     [[4, 2, 4, 0],
     [3, 0, 0, 2],
@@ -81,14 +120,12 @@ granular_room = np.array(
         [2, 4, 2, 3, 3, 3, 2, 0],
     ]
 )
-
-room = granular_room
-name = 'navigation-granular_room'
+room = simple_granular_room
+name = 'navigation-simple_granular_room'
 
 n_emissions = np.max(room) + 1
 c = np.zeros((n_emissions+1, 3))
 c[:n_emissions] = custom_colors[:n_emissions]
-
 
 a, x, rc = datagen_structured_obs_room(room, length=5000)
 
@@ -109,13 +146,11 @@ chmm.learn_viterbi_T(x, a, n_iter=100)
 
 # Plot the layout of the room
 cmap = colors.ListedColormap(c[:n_emissions])
-plt.matshow(room, cmap=cmap)
-plt.title('Figure 1: Room Layout')
-plt.savefig("figures/granular_room.pdf")
 
+# Plot the learned graph
 file = os.path.join("figures", f"{name}.png")
 graph = Plotting.plot_graph(
-    chmm, x, a, output_file=file, cmap=cmap, flip = True, rotation = .83
+    chmm, x, a, output_file=file, cmap=cmap, rotation=3
 )
 
 image = mpimg.imread(file)
@@ -123,5 +158,20 @@ fig, ax = plt.subplots()
 ax.axis('off')
 ax.imshow(image)
 
-plot_reasoning(x[1690:1700])
+
+mess_fwd = Reasoning.get_mess_fwd(chmm, x, pseudocount_E=0.1)
+
+lik, states, decode_mess_fwd = chmm.jacob_decode(x, a)
+
+
+
+print('mf', mess_fwd.shape)
+print('d_mf', decode_mess_fwd.shape)
+
+print('s', states.shape)
+
+print(states[:15])
+print(lik[:15])
+
+plot_path(0, rotation = 3)
 

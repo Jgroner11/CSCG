@@ -86,4 +86,4 @@ simple_granular_room = np.array(
     [3, 3, 2, 0]]
 )
 
-navigate(simple_granular_room, display_mode=1)
+navigate(simple_granular_room, display_mode=2)
