@@ -112,7 +112,6 @@ def plot_reasoning(targets):
 
 def plot_planning(starts, T):
     V_init = np.zeros(sum(chmm.n_clones))
-    # lst = [.1, .9]
     for i, id in enumerate(starts):
         V_init[id] = 1
 
@@ -150,6 +149,62 @@ def plot_planning(starts, T):
 
     fig.canvas.mpl_connect('key_press_event', update_image)
     plt.show()
+
+def plot_reasoning_then_planning(targets, starts):
+
+    V_init = np.zeros(sum(chmm.n_clones))
+    for i in targets:
+        V_init[i] = 1.0
+    T_init = chmm.T
+
+    img_path = "figures\\reasoning_fig.png"
+    graph = plot_heat_map(
+        chmm, x, a, V_init, T_init, output_file=img_path, flip = True, rotation = .9
+    )
+    image = mpimg.imread(img_path)
+    fig, ax = plt.subplots()
+    ax.axis('off')
+
+    mode = 'reasoning'
+    t = 0
+    ax.set_title(f't={t}')
+    img_display = ax.imshow(image, cmap='viridis')
+    cbar = plt.colorbar(img_display, ax=ax, orientation='vertical')
+
+    V = V_init
+    T = T_init
+    def update_image(event):
+        """Updates the plot with the next image when the specified key is pressed."""
+        nonlocal mode, t, V, T
+        if event.key == 'n':  # 'n' key for next image
+            t += 1
+            ax.set_title(f't={t}')
+            if mode == 'reasoning':
+                V, T = Reasoning.STP(V, T)
+            else: # mode == 'planning'
+                V = Reasoning.forward(V, T, V_init)
+                print('chosen action', Reasoning.select_action(V_init, T), '\n')       
+            graph = plot_heat_map(
+                chmm, x, a, V, T, output_file=img_path, flip = True, rotation = .9
+            )
+            new_image = mpimg.imread(img_path)
+            img_display.set_data(new_image)
+            fig.canvas.draw()
+        elif mode == 'reasoning' and event.key == 'm':
+            # one time switch from reasoning to planning
+            mode = 'planning'
+            t = 0
+            V_init = np.zeros(sum(chmm.n_clones))
+            for i, id in enumerate(starts):
+                V_init[id] = 1            
+            print('chosen action', Reasoning.select_action(V_init, T), '\n')
+            V = V_init
+
+
+    fig.canvas.mpl_connect('key_press_event', update_image)
+    plt.show()
+
+
 
 retrain_models = False
 
