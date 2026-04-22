@@ -51,8 +51,8 @@ def plot_heat_map(
         i = v[edge.source]
         j = v[edge.target]
         if i != j:        
-            edge_labels[index] = str(round(A_[j, i], 2))
-            # edge_labels[index] = str((int(j), int(i)))
+            # edge_labels[index] = str(round(A_[j, i], 2))
+            edge_labels[index] = ' ' + str(int(A_[j, i])) + ' '
 
     layout = [Plotting.flip(x, y, flip) for x, y in g.layout("kamada_kawai")]
     layout = [Plotting.rotate(x, y, 90 * rotation) for x, y in layout]
@@ -71,85 +71,6 @@ def plot_heat_map(
 
     return out
 
-def plot_reasoning(targets):
-    V_init = np.zeros(sum(chmm.n_clones))
-    for i in targets:
-        V_init[i] = 1.0
-    T_init = chmm.T
-
-    img_path = "figures\\reasoning_fig.png"
-    graph = plot_heat_map(
-        chmm, x, a, V_init, T_init, output_file=img_path, flip = True, rotation = .9
-    )
-    image = mpimg.imread(img_path)
-    fig, ax = plt.subplots()
-    ax.axis('off')
-    t = 0
-    ax.set_title(f't={t}')
-    img_display = ax.imshow(image, cmap='viridis')
-    cbar = plt.colorbar(img_display, ax=ax, orientation='vertical')
-
-    V = V_init
-    T = T_init
-    def update_image(event):
-        """Updates the plot with the next image when the specified key is pressed."""
-        nonlocal V, T, t
-        if event.key == 'n':  # 'n' key for next image
-            V, T = Reasoning.STP(V, T)
-            t += 1
-            ax.set_title(f't={t}')
-            # print(sum(V_init), sum(V))
-            graph = plot_heat_map(
-                chmm, x, a, V, T, output_file=img_path, flip = True, rotation = .9
-            )
-            new_image = mpimg.imread(img_path)
-            img_display.set_data(new_image)
-            fig.canvas.draw()
-
-    fig.canvas.mpl_connect('key_press_event', update_image)
-    plt.show()
-    return T
-
-def plot_planning(starts, T):
-    V_init = np.zeros(sum(chmm.n_clones))
-    for i, id in enumerate(starts):
-        V_init[id] = 1
-
-    img_path = "figures\\reasoning_fig.png"
-    graph = plot_heat_map(
-        chmm, x, a, V_init, T, output_file=img_path, flip = True, rotation = .9
-    )
-    image = mpimg.imread(img_path)
-    fig, ax = plt.subplots()
-    ax.axis('off')
-    t = 0
-    ax.set_title(f't={t}')
-    img_display = ax.imshow(image, cmap='viridis')
-    cbar = plt.colorbar(img_display, ax=ax, orientation='vertical')
-    
-    print('chosen action', Reasoning.select_action(V_init, T), '\n')
-
-    V = V_init
-    def update_image(event):
-        """Updates the plot with the next image when the specified key is pressed."""
-        nonlocal V, t
-        if event.key == 'n':  # 'n' key for next image
-            V = Reasoning.forward(V, T, V_init)
-            t += 1
-            ax.set_title(f't={t}')
-            # print(sum(V_init), sum(V))
-            graph = plot_heat_map(
-                chmm, x, a, V, T, output_file=img_path, flip = True, rotation = .9
-            )
-            new_image = mpimg.imread(img_path)
-            img_display.set_data(new_image)
-            fig.canvas.draw()
-
-            print('chosen action', Reasoning.select_action(V, T), '\n')
-
-    fig.canvas.mpl_connect('key_press_event', update_image)
-    plt.show()
-
 def plot_reasoning_then_planning(targets, starts):
 
     V_init = np.zeros(sum(chmm.n_clones))
@@ -165,9 +86,9 @@ def plot_reasoning_then_planning(targets, starts):
     fig, ax = plt.subplots()
     ax.axis('off')
 
-    mode = 'reasoning'
+    mode = 'Wavefront'
     t = 0
-    ax.set_title(f't={t}')
+    ax.set_title(f'{mode}: t={t}')
     img_display = ax.imshow(image, cmap='viridis')
     cbar = plt.colorbar(img_display, ax=ax, orientation='vertical')
 
@@ -175,13 +96,13 @@ def plot_reasoning_then_planning(targets, starts):
     T = T_init
     def update_image(event):
         """Updates the plot with the next image when the specified key is pressed."""
-        nonlocal mode, t, V, T
+        nonlocal mode, t, V, T, V_init
         if event.key == 'n':  # 'n' key for next image
             t += 1
-            ax.set_title(f't={t}')
-            if mode == 'reasoning':
+            ax.set_title(f'{mode}: t={t}')
+            if mode == 'Wavefront':
                 V, T = Reasoning.STP(V, T)
-            else: # mode == 'planning'
+            else: # mode == 'Planning'
                 V = Reasoning.forward(V, T, V_init)
                 print('chosen action', Reasoning.select_action(V_init, T), '\n')       
             graph = plot_heat_map(
@@ -190,15 +111,22 @@ def plot_reasoning_then_planning(targets, starts):
             new_image = mpimg.imread(img_path)
             img_display.set_data(new_image)
             fig.canvas.draw()
-        elif mode == 'reasoning' and event.key == 'm':
-            # one time switch from reasoning to planning
-            mode = 'planning'
+        elif mode == 'Wavefront' and event.key == 'm':
+            # one time switch from wavefront to planning
+            mode = 'Planning'
             t = 0
+            ax.set_title(f'{mode}: t={t}')
             V_init = np.zeros(sum(chmm.n_clones))
             for i, id in enumerate(starts):
                 V_init[id] = 1            
             print('chosen action', Reasoning.select_action(V_init, T), '\n')
             V = V_init
+            graph = plot_heat_map(
+                chmm, x, a, V, T, output_file=img_path, flip = True, rotation = .9
+            )
+            new_image = mpimg.imread(img_path)
+            img_display.set_data(new_image)
+            fig.canvas.draw()
 
 
     fig.canvas.mpl_connect('key_press_event', update_image)
@@ -277,24 +205,9 @@ cmap = colors.ListedColormap(c[:n_emissions])
 
 
 targets = [42]
-T = plot_reasoning(targets)
-
 starts = [52]
-plot_planning(starts, T)
 
-file = os.path.join("figures", f"{name}.png")
-graph = Plotting.plot_graph(
-    chmm, x, a, output_file=file, cmap=cmap, flip = True, rotation = .9
-)
-image = mpimg.imread(file)
-fig, ax = plt.subplots()
-ax.axis('off')
-ax.imshow(image)
-
-state_seq, obs_seq, action_seq = Reasoning.plan_path(starts[0], T, chmm.n_clones)
-print('states', state_seq)
-print('obs', obs_seq)
-print('actions', action_seq)
+plot_reasoning_then_planning(targets, starts)
 
 plt.show()
 
