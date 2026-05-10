@@ -1,15 +1,19 @@
-import numpy as np
-from chmm_actions import CHMM, forwardE, datagen_structured_obs_room
-import matplotlib.pyplot as plt
-import igraph
-import matplotlib
-from matplotlib import cm, colors
-import matplotlib.image as mpimg
-import sys, os, pickle
 import math
+import os
+import pickle
+import sys
 from queue import Queue
 
+import igraph
+import matplotlib
+import matplotlib.image as mpimg
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib import cm, colors
+
+from chmm_actions import CHMM, datagen_structured_obs_room, forwardE
 from CSCG_helpers import Plotting, Reasoning
+
 
 class Navigator():
     def __init__(self, chmm, target_nodes = [], target_obs = []):

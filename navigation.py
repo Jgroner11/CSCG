@@ -1,11 +1,15 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import igraph
-from matplotlib import cm, colors
-import sys, os, pickle
+import os
+import pickle
+import sys
 
-from chmm_actions import CHMM, forwardE, datagen_structured_obs_room
+import igraph
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib import cm, colors
+
+from chmm_actions import CHMM, datagen_structured_obs_room, forwardE
 from CSCG_helpers import Plotting
+
 
 def input_act():
     act_map = {'w':2, 'a':0, 's':3, 'd':1}

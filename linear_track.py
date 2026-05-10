@@ -1,12 +1,13 @@
-import sys, os
-
-import numpy as np
-from chmm_actions import CHMM, forwardE, datagen_structured_obs_room
-import matplotlib.pyplot as plt
-import igraph
-from matplotlib import cm, colors
 import os
+import sys
+
+import igraph
+import matplotlib.pyplot as plt
+import numpy as np
 from igraph.drawing import plot
+from matplotlib import cm, colors
+
+from chmm_actions import CHMM, datagen_structured_obs_room, forwardE
 
 custom_colors = (
     np.array(

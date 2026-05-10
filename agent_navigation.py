@@ -1,15 +1,19 @@
-import numpy as np
-import matplotlib.pyplot as plt
+import math
+import os
+import pickle
+import sys
+
 import igraph
 import matplotlib
-from matplotlib import cm, colors
 import matplotlib.image as mpimg
-import sys, os, pickle
-import math
+import matplotlib.pyplot as plt
+import numpy as np
+from matplotlib import cm, colors
 
-from chmm_actions import CHMM, forwardE, datagen_structured_obs_room
-from CSCG_helpers import Plotting, Reasoning
 from agent import Navigator
+from chmm_actions import CHMM, datagen_structured_obs_room, forwardE
+from CSCG_helpers import Plotting, Reasoning
+
 
 def input_act(agent, o):
     act_map = {'w':2, 'a':0, 's':3, 'd':1}

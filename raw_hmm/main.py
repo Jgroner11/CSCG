@@ -1,6 +1,6 @@
-from matplotlib import pyplot as plt
 import numpy as np
-from HMM import MM, HMM
+from HMM import HMM, MM
+from matplotlib import pyplot as plt
 
 mm = MM(5, ('u', 3, False))
 # mm = MM(7, ('r', 3, True))

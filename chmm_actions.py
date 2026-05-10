@@ -1,9 +1,11 @@
 from __future__ import print_function
-from builtins import range
-import numpy as np
-import numba as nb
-from tqdm import trange
+
 import sys
+from builtins import range
+
+import numba as nb
+import numpy as np
+from tqdm import trange
 
 
 def validate_seq(x, a, n_clones=None):

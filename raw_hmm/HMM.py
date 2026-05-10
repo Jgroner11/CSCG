@@ -1,9 +1,13 @@
-import numpy as np
+import os
+import pickle
+
 import igraph
-import os, pickle
-from matplotlib import cm, colors, pyplot as plt
 import matplotlib.image as mpimg
+import numpy as np
+from matplotlib import cm, colors
+from matplotlib import pyplot as plt
 from PIL import Image
+
 
 def choice(p):
     """choose an element based on a probability distribution"""
