@@ -88,7 +88,18 @@ class Plotting:
 
     @staticmethod
     def plot_heat_map(
-        chmm, x, a, V, output_file, multiple_episodes=False, vertex_size=30, flip=None, rotation = 0.
+        chmm,
+        x,
+        a,
+        V,
+        output_file,
+        multiple_episodes=False,
+        vertex_size=30,
+        flip=None,
+        rotation=0.0,
+        transition_weights=None,
+        edge_label_mode="none",
+        vertex_label_mode="state",
     ):
         # States is a list of which latent node (ie state) is most active at each time step
         states = chmm.decode(x, a)[1]
@@ -100,7 +111,9 @@ class Plotting:
         else:
             T = chmm.C[:, v][:, :, v]
         A = T.sum(0)
-        A /= A.sum(1, keepdims=True)
+        norm = A.sum(1, keepdims=True)
+        norm[norm == 0] = 1
+        A /= norm
         # A is a transition matrix of only the latent nodes (states) that get activated during walk of path
 
         # V_displayed represents the activity of all the nodes that are present in the A matrix/graph based on the inputted V activity for all the nodes
@@ -110,14 +123,42 @@ class Plotting:
 
         # print('sum V:', sum(V), 'sum Vdisp:', sum(V_displayed_nodes))
 
-        V_disp_norm = (V_displayed_nodes - np.min(V_displayed_nodes)) / (np.max(V_displayed_nodes) - np.min(V_displayed_nodes))
+        V_disp_norm = V_displayed_nodes
+        value_range = np.max(V_displayed_nodes) - np.min(V_displayed_nodes)
+        if value_range > 0:
+            V_disp_norm = (V_displayed_nodes - np.min(V_displayed_nodes)) / value_range
 
         # colormap = cm.get_cmap('viridis')
         colormap = matplotlib.colormaps['viridis']
-        colors = colormap(V_disp_norm)
-        colors = [tuple(c) for c in colors]
+        vertex_colors = colormap(V_disp_norm)
+        vertex_colors = [tuple(c) for c in vertex_colors]
 
         g = igraph.Graph.Adjacency((A > 0).tolist())
+
+        edge_labels = None
+        if transition_weights is not None and edge_label_mode != "none":
+            transition_sum = transition_weights.sum(0)
+            edge_labels = ["" for _ in g.es]
+            for index, edge in enumerate(g.es):
+                i = v[edge.source]
+                j = v[edge.target]
+                if i == j:
+                    continue
+                if edge_label_mode == "round":
+                    edge_labels[index] = str(round(transition_sum[j, i], 2))
+                elif edge_label_mode == "int":
+                    edge_labels[index] = f" {int(transition_sum[j, i])} "
+                else:
+                    raise ValueError(f"Unknown edge_label_mode: {edge_label_mode}")
+
+        if vertex_label_mode == "state":
+            vertex_labels = v
+        elif vertex_label_mode == "value":
+            vertex_labels = V_displayed_nodes
+        elif vertex_label_mode == "none":
+            vertex_labels = None
+        else:
+            raise ValueError(f"Unknown vertex_label_mode: {vertex_label_mode}")
 
         layout = [Plotting.flip(x, y, flip) for x, y in g.layout("kamada_kawai")]
         layout = [Plotting.rotate(x, y, 90 * rotation) for x, y in layout]
@@ -126,9 +167,10 @@ class Plotting:
             g,
             output_file,
             layout=layout,
-            vertex_color=colors,
-            vertex_label=v,
+            vertex_color=vertex_colors,
+            vertex_label=vertex_labels,
             vertex_size=vertex_size,
+            edge_label=edge_labels,
             margin=50,
         )
 

@@ -1,8 +1,6 @@
 import os
 import pickle
 
-import igraph
-import matplotlib
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import numpy as np
@@ -118,82 +116,18 @@ def _one_hot(nodes, size, value=1.0):
     return vector
 
 
-def plot_heat_map(
-    model,
-    observations,
-    actions,
-    values,
-    transition_weights,
-    output_file,
-    multiple_episodes=False,
-    vertex_size=30,
-    flip=None,
-    rotation=0,
-    edge_label_mode="int",
-):
-    states = model.decode(observations, actions)[1]
-
-    visible_states = np.unique(states)
-    if multiple_episodes:
-        transitions = model.C[:, visible_states][:, :, visible_states][:-1, 1:, 1:]
-        visible_states = visible_states[1:]
-    else:
-        transitions = model.C[:, visible_states][:, :, visible_states]
-
-    adjacency = transitions.sum(0)
-    adjacency /= adjacency.sum(1, keepdims=True)
-
-    visible_values = np.zeros(visible_states.shape)
-    for i, state_id in enumerate(visible_states):
-        visible_values[i] = values[state_id]
-
-    normalized_values = visible_values
-    value_range = np.max(visible_values) - np.min(visible_values)
-    if value_range > 0:
-        normalized_values = (visible_values - np.min(visible_values)) / value_range
-
-    colormap = matplotlib.colormaps["viridis"]
-    vertex_colors = [tuple(c) for c in colormap(normalized_values)]
-
-    graph = igraph.Graph.Adjacency((adjacency > 0).tolist())
-
-    transition_sum = transition_weights.sum(0)
-    edge_labels = ["" for _ in graph.es]
-    for index, edge in enumerate(graph.es):
-        source = visible_states[edge.source]
-        target = visible_states[edge.target]
-        if source == target or edge_label_mode == "none":
-            continue
-        if edge_label_mode == "round":
-            edge_labels[index] = str(round(transition_sum[target, source], 2))
-        else:
-            edge_labels[index] = f" {int(transition_sum[target, source])} "
-
-    layout = [Plotting.flip(x_pos, y_pos, flip) for x_pos, y_pos in graph.layout("kamada_kawai")]
-    layout = [Plotting.rotate(x_pos, y_pos, 90 * rotation) for x_pos, y_pos in layout]
-
-    return igraph.plot(
-        graph,
-        output_file,
-        layout=layout,
-        vertex_color=vertex_colors,
-        vertex_label=visible_values,
-        vertex_size=vertex_size,
-        edge_label=edge_labels,
-        margin=50,
-    )
-
-
 def _make_activity_figure(model, observations, actions, values, transition_weights, title, image_path, flip, rotation):
-    plot_heat_map(
+    Plotting.plot_heat_map(
         model,
         observations,
         actions,
         values,
-        transition_weights,
         output_file=image_path,
         flip=flip,
         rotation=rotation,
+        transition_weights=transition_weights,
+        edge_label_mode="int",
+        vertex_label_mode="value",
     )
     image = mpimg.imread(image_path)
     fig, ax = plt.subplots()
@@ -205,15 +139,17 @@ def _make_activity_figure(model, observations, actions, values, transition_weigh
 
 
 def _redraw_activity(model, observations, actions, values, transition_weights, image_path, img_display, ax, title, flip, rotation):
-    plot_heat_map(
+    Plotting.plot_heat_map(
         model,
         observations,
         actions,
         values,
-        transition_weights,
         output_file=image_path,
         flip=flip,
         rotation=rotation,
+        transition_weights=transition_weights,
+        edge_label_mode="int",
+        vertex_label_mode="value",
     )
     img_display.set_data(mpimg.imread(image_path))
     ax.set_title(title)
