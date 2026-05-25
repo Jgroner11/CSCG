@@ -134,31 +134,6 @@ class Plotting:
 
         return out
     
-    # sequential colormaps:
-    # viridis
-    # plasma
-    # inferno
-    # magma
-    # cividis
-    # Blues
-    # BuGn
-    # BuPu
-    # GnBu
-    # Greens
-    # Greys
-    # Oranges
-    # OrRd
-    # PuBu
-    # PuBuGn
-    # PuRd
-    # Purples
-    # RdPu
-    # Reds
-    # YlGn
-    # YlGnBu
-    # YlOrBr
-    # YlOrRd
-    
     @staticmethod
     def plot_room(room, pos=None, t=None):
         room = room.copy()
