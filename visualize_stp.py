@@ -1,163 +1,18 @@
-import math
 import os
 import pickle
-import sys
 
 import igraph
 import matplotlib
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib import cm, colors
+from matplotlib import colors
 
-from chmm_actions import CHMM, datagen_structured_obs_room, forwardE
+from chmm_actions import CHMM, datagen_structured_obs_room
 from CSCG_helpers import Plotting, Reasoning
 
 
-def plot_heat_map(
-    chmm, x, a, V, T_, output_file, multiple_episodes=False, vertex_size=30, flip=None, rotation = 0
-):
-    # States is a list of which latent node (ie state) is most active at each time step
-    states = chmm.decode(x, a)[1]
-
-    v = np.unique(states)
-    if multiple_episodes:
-        T = chmm.C[:, v][:, :, v][:-1, 1:, 1:]
-        v = v[1:]
-    else:
-        T = chmm.C[:, v][:, :, v]
-    A = T.sum(0)
-    A /= A.sum(1, keepdims=True)
-    # A is a transition matrix of only the latent nodes (states) that get activated during walk of path
-
-    # V_displayed represents the activity of all the nodes that are present in the A matrix/graph based on the inputted V activity for all the nodes
-    V_displayed_nodes = np.zeros(v.shape)
-    for i, id in enumerate(v):
-        V_displayed_nodes[i] = V[id]
-
-    # print('sum V:', sum(V), 'sum Vdisp:', sum(V_displayed_nodes))
-
-    V_disp_norm = V_displayed_nodes
-    if (np.max(V_displayed_nodes) - np.min(V_displayed_nodes)) > 0:
-        V_disp_norm = (V_displayed_nodes - np.min(V_displayed_nodes)) / (np.max(V_displayed_nodes) - np.min(V_displayed_nodes))
-        
-
-    # colormap = cm.get_cmap('viridis')
-    colormap = matplotlib.colormaps['viridis']
-    colors = colormap(V_disp_norm)
-    colors = [tuple(c) for c in colors]
-
-    g = igraph.Graph.Adjacency((A > 0).tolist())
-
-    A_ = T_.sum(0)
-    edge_labels = ["" for _ in g.es]
-    for index, edge in enumerate(g.es):
-        i = v[edge.source]
-        j = v[edge.target]
-        if i != j:        
-            edge_labels[index] = str(round(A_[j, i], 2))
-            # edge_labels[index] = str((int(j), int(i)))
-
-    layout = [Plotting.flip(x, y, flip) for x, y in g.layout("kamada_kawai")]
-    layout = [Plotting.rotate(x, y, 90 * rotation) for x, y in layout]
-
-    out = igraph.plot(
-        g,
-        output_file,
-        layout=layout,
-        vertex_color=colors,
-        vertex_label=V_displayed_nodes,
-        # vertex_label=v,
-        vertex_size=vertex_size,
-        edge_label=edge_labels,
-        margin=50,
-    )
-
-    return out
-
-def plot_reasoning(targets):
-    V_init = np.zeros(sum(chmm.n_clones))
-    for i in targets:
-        V_init[i] = 1.0
-    T_init = chmm.T
-
-    img_path = "figures\\reasoning_fig.png"
-    graph = plot_heat_map(
-        chmm, x, a, V_init, T_init, output_file=img_path, flip = True, rotation = .9
-    )
-    image = mpimg.imread(img_path)
-    fig, ax = plt.subplots()
-    ax.axis('off')
-    t = 0
-    ax.set_title(f't={t}')
-    img_display = ax.imshow(image, cmap='viridis')
-    cbar = plt.colorbar(img_display, ax=ax, orientation='vertical')
-
-    V = V_init
-    T = T_init
-    def update_image(event):
-        """Updates the plot with the next image when the specified key is pressed."""
-        nonlocal V, T, t
-        if event.key == 'n':  # 'n' key for next image
-            V, T = Reasoning.STP(V, T)
-            t += 1
-            ax.set_title(f't={t}')
-            # print(sum(V_init), sum(V))
-            graph = plot_heat_map(
-                chmm, x, a, V, T, output_file=img_path, flip = True, rotation = .9
-            )
-            new_image = mpimg.imread(img_path)
-            img_display.set_data(new_image)
-            fig.canvas.draw()
-
-    fig.canvas.mpl_connect('key_press_event', update_image)
-    plt.show()
-    return T
-
-def plot_planning(starts, T):
-    V_init = np.zeros(sum(chmm.n_clones))
-    # lst = [.1, .9]
-    for i, id in enumerate(starts):
-        V_init[id] = 1
-
-    img_path = "figures\\reasoning_fig.png"
-    graph = plot_heat_map(
-        chmm, x, a, V_init, T, output_file=img_path, flip = True, rotation = .9
-    )
-    image = mpimg.imread(img_path)
-    fig, ax = plt.subplots()
-    ax.axis('off')
-    t = 0
-    ax.set_title(f't={t}')
-    img_display = ax.imshow(image, cmap='viridis')
-    cbar = plt.colorbar(img_display, ax=ax, orientation='vertical')
-    
-    print('chosen action', Reasoning.select_action(V_init, T), '\n')
-
-    V = V_init
-    def update_image(event):
-        """Updates the plot with the next image when the specified key is pressed."""
-        nonlocal V, t
-        if event.key == 'n':  # 'n' key for next image
-            V = Reasoning.forward(V, T, V_init)
-            t += 1
-            ax.set_title(f't={t}')
-            # print(sum(V_init), sum(V))
-            graph = plot_heat_map(
-                chmm, x, a, V, T, output_file=img_path, flip = True, rotation = .9
-            )
-            new_image = mpimg.imread(img_path)
-            img_display.set_data(new_image)
-            fig.canvas.draw()
-
-            print('chosen action', Reasoning.select_action(V, T), '\n')
-
-    fig.canvas.mpl_connect('key_press_event', update_image)
-    plt.show()
-
-retrain_models = False
-
-custom_colors = (
+CUSTOM_COLORS = (
     np.array(
         [
             [214, 214, 214],
@@ -174,15 +29,16 @@ custom_colors = (
     / 256
 )
 
-Plotting.custom_colors = custom_colors
-
-simple_granular_room = np.array(
-    [[4, 2, 4, 0],
-    [3, 0, 0, 2],
-    [4, 1, 3, 0],
-    [3, 3, 2, 0]]
+SIMPLE_GRANULAR_ROOM = np.array(
+    [
+        [4, 2, 4, 0],
+        [3, 0, 0, 2],
+        [4, 1, 3, 0],
+        [3, 3, 2, 0],
+    ]
 )
-granular_room = np.array(
+
+GRANULAR_ROOM = np.array(
     [
         [4, 2, 3, 0, 3, 4, 4, 4],
         [4, 4, 3, 2, 3, 2, 3, 4],
@@ -193,57 +49,383 @@ granular_room = np.array(
     ]
 )
 
-room = granular_room
-name = 'navigation-granular_room'
+DEFAULT_MODEL_NAME = "navigation-granular_room"
+DEFAULT_IMAGE_PATH = "figures\\reasoning_fig.png"
 
-n_emissions = np.max(room) + 1
-c = np.zeros((n_emissions+1, 3))
-c[:n_emissions] = custom_colors[:n_emissions]
-
-
-a, x, rc = datagen_structured_obs_room(room, length=5000)
-
-n_clones = np.ones(n_emissions, dtype=np.int64) * 25
-
-file = os.path.join("models", f"{name}.pkl")
-if os.path.isfile(file) and not retrain_models:
-    with open(file, 'rb') as f:
-        (chmm, progression) = pickle.load(f)
-else:
-    chmm = CHMM(n_clones=n_clones, pseudocount=2e-3, x=x, a=a, seed=42)  # Initialize the model
-    progression = chmm.learn_em_T(x, a, n_iter=1000)  # Training
-    with open(file, 'wb') as f: # open a text file
-        pickle.dump((chmm, progression), protocol=5, file=f) # Serializes model object
-
-chmm.pseudocount = 0.0
-chmm.learn_viterbi_T(x, a, n_iter=100)
-
-# Plot the layout of the room
-cmap = colors.ListedColormap(c[:n_emissions])
-# plt.matshow(room, cmap=cmap)
-# plt.title('Figure 1: Room Layout')
-# plt.savefig("figures/granular_room.pdf")
+chmm = None
+x = None
+a = None
+room = None
+cmap = None
 
 
-targets = [42]
-T = plot_reasoning(targets)
+def setup_navigation_model(
+    selected_room=None,
+    name=DEFAULT_MODEL_NAME,
+    retrain_models=False,
+    length=5000,
+    clone_count=25,
+    seed=42,
+):
+    Plotting.custom_colors = CUSTOM_COLORS
 
-starts = [52]
-plot_planning(starts, T)
+    if selected_room is None:
+        selected_room = GRANULAR_ROOM
 
-file = os.path.join("figures", f"{name}.png")
-graph = Plotting.plot_graph(
-    chmm, x, a, output_file=file, cmap=cmap, flip = True, rotation = .9
-)
-image = mpimg.imread(file)
-fig, ax = plt.subplots()
-ax.axis('off')
-ax.imshow(image)
+    n_emissions = np.max(selected_room) + 1
+    color_values = np.zeros((n_emissions + 1, 3))
+    color_values[:n_emissions] = CUSTOM_COLORS[:n_emissions]
 
-state_seq, obs_seq, action_seq = Reasoning.plan_path(starts[0], T, chmm.n_clones)
-print('states', state_seq)
-print('obs', obs_seq)
-print('actions', action_seq)
+    actions, observations, rc = datagen_structured_obs_room(selected_room, length=length)
+    n_clones = np.ones(n_emissions, dtype=np.int64) * clone_count
 
-plt.show()
+    model_file = os.path.join("models", f"{name}.pkl")
+    if os.path.isfile(model_file) and not retrain_models:
+        with open(model_file, "rb") as f:
+            model, progression = pickle.load(f)
+    else:
+        model = CHMM(n_clones=n_clones, pseudocount=2e-3, x=observations, a=actions, seed=seed)
+        progression = model.learn_em_T(observations, actions, n_iter=1000)
+        with open(model_file, "wb") as f:
+            pickle.dump((model, progression), protocol=5, file=f)
 
+    model.pseudocount = 0.0
+    model.learn_viterbi_T(observations, actions, n_iter=100)
+
+    room_cmap = colors.ListedColormap(color_values[:n_emissions])
+    return model, observations, actions, rc, selected_room, room_cmap
+
+
+def load_default_context(retrain_models=False):
+    global chmm, x, a, room, cmap
+    chmm, x, a, _rc, room, cmap = setup_navigation_model(retrain_models=retrain_models)
+    return chmm, x, a, room, cmap
+
+
+def _context(model=None, observations=None, actions=None):
+    model = chmm if model is None else model
+    observations = x if observations is None else observations
+    actions = a if actions is None else actions
+    if model is None or observations is None or actions is None:
+        model, observations, actions, _room, _cmap = load_default_context()
+    return model, observations, actions
+
+
+def _one_hot(nodes, size, value=1.0):
+    vector = np.zeros(size)
+    for node in nodes:
+        vector[node] = value
+    return vector
+
+
+def plot_heat_map(
+    model,
+    observations,
+    actions,
+    values,
+    transition_weights,
+    output_file,
+    multiple_episodes=False,
+    vertex_size=30,
+    flip=None,
+    rotation=0,
+    edge_label_mode="int",
+):
+    states = model.decode(observations, actions)[1]
+
+    visible_states = np.unique(states)
+    if multiple_episodes:
+        transitions = model.C[:, visible_states][:, :, visible_states][:-1, 1:, 1:]
+        visible_states = visible_states[1:]
+    else:
+        transitions = model.C[:, visible_states][:, :, visible_states]
+
+    adjacency = transitions.sum(0)
+    adjacency /= adjacency.sum(1, keepdims=True)
+
+    visible_values = np.zeros(visible_states.shape)
+    for i, state_id in enumerate(visible_states):
+        visible_values[i] = values[state_id]
+
+    normalized_values = visible_values
+    value_range = np.max(visible_values) - np.min(visible_values)
+    if value_range > 0:
+        normalized_values = (visible_values - np.min(visible_values)) / value_range
+
+    colormap = matplotlib.colormaps["viridis"]
+    vertex_colors = [tuple(c) for c in colormap(normalized_values)]
+
+    graph = igraph.Graph.Adjacency((adjacency > 0).tolist())
+
+    transition_sum = transition_weights.sum(0)
+    edge_labels = ["" for _ in graph.es]
+    for index, edge in enumerate(graph.es):
+        source = visible_states[edge.source]
+        target = visible_states[edge.target]
+        if source == target or edge_label_mode == "none":
+            continue
+        if edge_label_mode == "round":
+            edge_labels[index] = str(round(transition_sum[target, source], 2))
+        else:
+            edge_labels[index] = f" {int(transition_sum[target, source])} "
+
+    layout = [Plotting.flip(x_pos, y_pos, flip) for x_pos, y_pos in graph.layout("kamada_kawai")]
+    layout = [Plotting.rotate(x_pos, y_pos, 90 * rotation) for x_pos, y_pos in layout]
+
+    return igraph.plot(
+        graph,
+        output_file,
+        layout=layout,
+        vertex_color=vertex_colors,
+        vertex_label=visible_values,
+        vertex_size=vertex_size,
+        edge_label=edge_labels,
+        margin=50,
+    )
+
+
+def _make_activity_figure(model, observations, actions, values, transition_weights, title, image_path, flip, rotation):
+    plot_heat_map(
+        model,
+        observations,
+        actions,
+        values,
+        transition_weights,
+        output_file=image_path,
+        flip=flip,
+        rotation=rotation,
+    )
+    image = mpimg.imread(image_path)
+    fig, ax = plt.subplots()
+    ax.axis("off")
+    ax.set_title(title)
+    img_display = ax.imshow(image, cmap="viridis")
+    plt.colorbar(img_display, ax=ax, orientation="vertical")
+    return fig, ax, img_display
+
+
+def _redraw_activity(model, observations, actions, values, transition_weights, image_path, img_display, ax, title, flip, rotation):
+    plot_heat_map(
+        model,
+        observations,
+        actions,
+        values,
+        transition_weights,
+        output_file=image_path,
+        flip=flip,
+        rotation=rotation,
+    )
+    img_display.set_data(mpimg.imread(image_path))
+    ax.set_title(title)
+    ax.figure.canvas.draw()
+
+
+def plot_reasoning(
+    targets,
+    model=None,
+    observations=None,
+    actions=None,
+    image_path=DEFAULT_IMAGE_PATH,
+    flip=True,
+    rotation=0.9,
+):
+    model, observations, actions = _context(model, observations, actions)
+    values = _one_hot(targets, sum(model.n_clones))
+    transition_weights = model.T
+
+    fig, ax, img_display = _make_activity_figure(
+        model,
+        observations,
+        actions,
+        values,
+        transition_weights,
+        "t=0",
+        image_path,
+        flip,
+        rotation,
+    )
+
+    t = 0
+
+    def update_image(event):
+        nonlocal values, transition_weights, t
+        if event.key != "n":
+            return
+        values, transition_weights = Reasoning.STP(values, transition_weights)
+        t += 1
+        _redraw_activity(
+            model,
+            observations,
+            actions,
+            values,
+            transition_weights,
+            image_path,
+            img_display,
+            ax,
+            f"t={t}",
+            flip,
+            rotation,
+        )
+
+    fig.canvas.mpl_connect("key_press_event", update_image)
+    plt.show()
+    return transition_weights
+
+
+def plot_planning(
+    starts,
+    transition_weights,
+    model=None,
+    observations=None,
+    actions=None,
+    image_path=DEFAULT_IMAGE_PATH,
+    flip=True,
+    rotation=0.9,
+):
+    model, observations, actions = _context(model, observations, actions)
+    initial_values = _one_hot(starts, sum(model.n_clones))
+    values = initial_values
+
+    fig, ax, img_display = _make_activity_figure(
+        model,
+        observations,
+        actions,
+        values,
+        transition_weights,
+        "t=0",
+        image_path,
+        flip,
+        rotation,
+    )
+
+    print("chosen action", Reasoning.select_action(initial_values, transition_weights), "\n")
+    t = 0
+
+    def update_image(event):
+        nonlocal values, t
+        if event.key != "n":
+            return
+        values = Reasoning.forward(values, transition_weights, initial_values)
+        t += 1
+        _redraw_activity(
+            model,
+            observations,
+            actions,
+            values,
+            transition_weights,
+            image_path,
+            img_display,
+            ax,
+            f"t={t}",
+            flip,
+            rotation,
+        )
+        print("chosen action", Reasoning.select_action(values, transition_weights), "\n")
+
+    fig.canvas.mpl_connect("key_press_event", update_image)
+    plt.show()
+
+
+def plot_reasoning_then_planning(
+    targets,
+    starts,
+    model=None,
+    observations=None,
+    actions=None,
+    image_path=DEFAULT_IMAGE_PATH,
+    flip=True,
+    rotation=0.9,
+):
+    model, observations, actions = _context(model, observations, actions)
+    initial_values = _one_hot(targets, sum(model.n_clones))
+    values = initial_values
+    transition_weights = model.T
+    mode = "Wavefront"
+    t = 0
+
+    fig, ax, img_display = _make_activity_figure(
+        model,
+        observations,
+        actions,
+        values,
+        transition_weights,
+        f"{mode}: t={t}",
+        image_path,
+        flip,
+        rotation,
+    )
+
+    def update_image(event):
+        nonlocal mode, t, values, transition_weights, initial_values
+        if event.key == "n":
+            t += 1
+            if mode == "Wavefront":
+                values, transition_weights = Reasoning.STP(values, transition_weights)
+            else:
+                values = Reasoning.forward(values, transition_weights, initial_values)
+                print("chosen action", Reasoning.select_action(values, transition_weights), "\n")
+            _redraw_activity(
+                model,
+                observations,
+                actions,
+                values,
+                transition_weights,
+                image_path,
+                img_display,
+                ax,
+                f"{mode}: t={t}",
+                flip,
+                rotation,
+            )
+        elif mode == "Wavefront" and event.key == "m":
+            mode = "Planning"
+            t = 0
+            initial_values = _one_hot(starts, sum(model.n_clones))
+            values = initial_values
+            print("chosen action", Reasoning.select_action(initial_values, transition_weights), "\n")
+            _redraw_activity(
+                model,
+                observations,
+                actions,
+                values,
+                transition_weights,
+                image_path,
+                img_display,
+                ax,
+                f"{mode}: t={t}",
+                flip,
+                rotation,
+            )
+
+    fig.canvas.mpl_connect("key_press_event", update_image)
+    plt.show()
+    return transition_weights
+
+
+def show_graph_and_plan(starts, transition_weights, name=DEFAULT_MODEL_NAME, flip=True, rotation=0.9):
+    model, observations, actions = _context()
+    output_file = os.path.join("figures", f"{name}.png")
+    Plotting.plot_graph(model, observations, actions, output_file=output_file, cmap=cmap, flip=flip, rotation=rotation)
+
+    image = mpimg.imread(output_file)
+    fig, ax = plt.subplots()
+    ax.axis("off")
+    ax.imshow(image)
+
+    state_seq, obs_seq, action_seq = Reasoning.plan_path(starts[0], transition_weights, model.n_clones)
+    print("states", state_seq)
+    print("obs", obs_seq)
+    print("actions", action_seq)
+    plt.show()
+
+
+def main():
+    load_default_context(retrain_models=False)
+    targets = [42]
+    starts = [52]
+    transition_weights = plot_reasoning_then_planning(targets, starts)
+    show_graph_and_plan(starts, transition_weights)
+
+
+if __name__ == "__main__":
+    main()
