@@ -241,7 +241,7 @@ def plot_planning(
         nonlocal values, t
         if event.key != "n":
             return
-        values = Reasoning.forward(values, transition_weights, initial_values)
+        values = Reasoning.propogate(values, transition_weights, initial_values)
         t += 1
         _redraw_activity(
             model,
@@ -298,7 +298,7 @@ def plot_reasoning_then_planning(
             if mode == "Wavefront":
                 values, transition_weights = Reasoning.STP(values, transition_weights)
             else:
-                values = Reasoning.forward(values, transition_weights, initial_values)
+                values = Reasoning.propogate(values, transition_weights, initial_values)
                 print("chosen action", Reasoning.select_action(values, transition_weights), "\n")
             _redraw_activity(
                 model,
@@ -355,7 +355,7 @@ def show_graph_and_plan(starts, transition_weights, name=DEFAULT_MODEL_NAME, fli
     plt.show()
 
 
-def main():
+if __name__ == "__main__":
     load_default_context(retrain_models=False)
     targets = [42]
     starts = [52]
@@ -363,5 +363,3 @@ def main():
     show_graph_and_plan(starts, transition_weights)
 
 
-if __name__ == "__main__":
-    main()

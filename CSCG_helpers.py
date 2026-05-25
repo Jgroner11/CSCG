@@ -246,6 +246,7 @@ class Reasoning:
 
     @staticmethod
     def get_mess_fwd(chmm, x, pseudocount=0.0, pseudocount_E=0.0):
+        """Compute normalized forward messages for an observation sequence using an explicit emission matrix."""
         n_clones = chmm.n_clones
         E = np.zeros((n_clones.sum(), len(n_clones)))
         last = 0
@@ -268,6 +269,7 @@ class Reasoning:
     
     @staticmethod
     def forwardV(V, V_init, T):
+        """Propagate activity forward, re-add the seed activity, and normalize total activity growth."""
         s = sum(V)
         v_new = np.zeros(V.shape)
         for i in range(T.shape[0]):
@@ -277,6 +279,7 @@ class Reasoning:
     
     @staticmethod
     def backwardV(V, V_init, T):
+        """Propagate activity backward through transposed transitions, re-add the seed activity, and normalize growth."""
         s = sum(V)
         v_new = np.zeros(V.shape)
         for i in range(T.shape[0]):
@@ -286,6 +289,7 @@ class Reasoning:
 
     @staticmethod 
     def forward_search(chmm, x, n_iters=10):
+        """Initialize activity from forward messages and repeatedly propagate it for a fixed number of iterations."""
         mess_fwd = Reasoning.get_mess_fwd(chmm, x, pseudocount_E=0.1)
         V_init = mess_fwd[-1]
         V = V_init
@@ -294,11 +298,13 @@ class Reasoning:
 
     @staticmethod
     def sigmoid(x):
+        """Apply the logistic sigmoid transform elementwise."""
         return 1 / (1 + np.exp(-x))
 
     
     @staticmethod
     def STP(v, T):
+        """Propagate activity while depressing traversed transition weights to encode a wavefront."""
 
         v_ = np.zeros(v.shape)
         for i in range(T.shape[0]):
@@ -316,7 +322,8 @@ class Reasoning:
 
     
     @staticmethod
-    def forward(v, T, v_init):
+    def propogate(v, T, v_init):
+        """Propagate activity forward through all action transitions and clip values to the unit interval."""
         v_ = np.zeros(v.shape)
         for i in range(T.shape[0]):
             v_ += v @ T[i]
@@ -326,6 +333,7 @@ class Reasoning:
     
     @staticmethod
     def select_action(v, T):
+        """Choose the action whose transition matrix sends the most positive activity forward."""
         num_actions = T.shape[0]
         action_vector = np.zeros(num_actions)
         for i in range(num_actions):
@@ -335,7 +343,7 @@ class Reasoning:
     
     @staticmethod
     def get_obs(x, n_clones):
-        """Get observation of a latent state x"""
+        """Return the observation index that owns a latent clone state."""
         lower = 0
         
         for i, amt in enumerate(n_clones):
@@ -347,6 +355,7 @@ class Reasoning:
 
     @staticmethod
     def plan_path(x, T, n_clones, termination_threshold = .01, max_depth=50):
+        """Greedily follow the strongest transition path from a latent state until the transition strength falls below threshold."""
         state_seq = []
         obs_seq = []
         action_seq = []
