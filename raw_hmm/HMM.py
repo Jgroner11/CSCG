@@ -8,6 +8,8 @@ from matplotlib import cm, colors
 from matplotlib import pyplot as plt
 from PIL import Image
 
+from CSCG_helpers import Plotting
+
 
 def choice(p):
     """choose an element based on a probability distribution"""
@@ -216,26 +218,12 @@ class HMM(MM):
         return O
         
     def save_image(self, img_path="imgs\\hmm.png", label_edges=False, cur_node=None, cur_obs=None):
-        custom_colors = (
-            np.array(
-                [
-                    [85, 35, 157],
-                    [253, 252, 144],
-                    [114, 245, 144],
-                    [151, 38, 20],
-                    [239, 142, 192],
-                    [214, 134, 48],
-                    [140, 194, 250],
-                    [72, 160, 162],
-                ]
-            )
-            / 256
-        )
+        display_colors = Plotting.custom_colors
 
-        if self.m > len(custom_colors):
-            custom_colors = np.vstack((custom_colors, np.random.rand(self.m - len(custom_colors), 3)))        
+        if self.m > len(display_colors):
+            display_colors = np.vstack((display_colors, np.random.rand(self.m - len(display_colors), 3)))        
         
-        cmap = colors.ListedColormap(custom_colors[:self.m])
+        cmap = colors.ListedColormap(display_colors[:self.m])
 
         g = igraph.Graph.Adjacency((self.A > 0).tolist())
 

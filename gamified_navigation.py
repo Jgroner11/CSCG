@@ -9,6 +9,7 @@ from matplotlib import cm, colors
 
 from chmm_actions import CHMM, datagen_structured_obs_room, forwardE
 from CSCG_helpers import Plotting
+from rooms import SIMPLE_GRANULAR_ROOM
 
 
 def input_act():
@@ -64,30 +65,4 @@ def navigate(room, start_pos=None, display_mode=2):
 
 retrain_models = False
 
-custom_colors = (
-    np.array(
-        [
-            [214, 214, 214],
-            [253, 252, 144],
-            [239, 142, 192],
-            [140, 194, 250],
-            [214, 134, 48],
-            [85, 35, 157],
-            [114, 245, 144],
-            [151, 38, 20],
-            [72, 160, 162],
-        ]
-    )
-    / 256
-)
-
-Plotting.custom_colors = custom_colors
-
-simple_granular_room = np.array(
-    [[4, 2, 4, 0],
-    [3, 0, 0, 2],
-    [4, 1, 3, 0],
-    [3, 3, 2, 0]]
-)
-
-navigate(simple_granular_room, display_mode=2)
+navigate(SIMPLE_GRANULAR_ROOM, display_mode=2)

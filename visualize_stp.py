@@ -8,44 +8,8 @@ from matplotlib import colors
 
 from chmm_actions import CHMM, datagen_structured_obs_room
 from CSCG_helpers import Plotting, Reasoning
+from rooms import GRANULAR_ROOM
 
-
-CUSTOM_COLORS = (
-    np.array(
-        [
-            [214, 214, 214],
-            [253, 252, 144],
-            [239, 142, 192],
-            [140, 194, 250],
-            [214, 134, 48],
-            [85, 35, 157],
-            [114, 245, 144],
-            [151, 38, 20],
-            [72, 160, 162],
-        ]
-    )
-    / 256
-)
-
-SIMPLE_GRANULAR_ROOM = np.array(
-    [
-        [4, 2, 4, 0],
-        [3, 0, 0, 2],
-        [4, 1, 3, 0],
-        [3, 3, 2, 0],
-    ]
-)
-
-GRANULAR_ROOM = np.array(
-    [
-        [4, 2, 3, 0, 3, 4, 4, 4],
-        [4, 4, 3, 2, 3, 2, 3, 4],
-        [4, 4, 2, 0, 4, 2, 4, 0],
-        [0, 2, 4, 4, 3, 0, 0, 2],
-        [3, 3, 4, 0, 4, 1, 3, 0],
-        [2, 4, 2, 3, 3, 3, 2, 0],
-    ]
-)
 
 DEFAULT_MODEL_NAME = "navigation-granular_room"
 DEFAULT_IMAGE_PATH = "figures\\reasoning_fig.png"
@@ -66,14 +30,12 @@ def setup_navigation_model(
     clone_count=25,
     seed=42,
 ):
-    Plotting.custom_colors = CUSTOM_COLORS
-
     if selected_room is None:
         selected_room = GRANULAR_ROOM
 
     n_emissions = np.max(selected_room) + 1
     color_values = np.zeros((n_emissions + 1, 3))
-    color_values[:n_emissions] = CUSTOM_COLORS[:n_emissions]
+    color_values[:n_emissions] = Plotting.custom_colors[:n_emissions]
 
     actions, observations, rc = datagen_structured_obs_room(selected_room, length=length)
     n_clones = np.ones(n_emissions, dtype=np.int64) * clone_count

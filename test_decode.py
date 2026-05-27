@@ -12,6 +12,7 @@ from matplotlib import cm, colors
 
 from chmm_actions import CHMM, datagen_structured_obs_room, forwardE
 from CSCG_helpers import Plotting, Reasoning
+from rooms import SIMPLE_GRANULAR_ROOM
 
 
 def save_image(t, file, rotation=0):
@@ -109,48 +110,12 @@ def plot_path(start = None, plot_location=True, rotation = 0):
 
 retrain_models = False
 
-custom_colors = (
-    np.array(
-        [
-            [214, 214, 214],
-            [253, 252, 144],
-            [239, 142, 192],
-            [140, 194, 250],
-            [214, 134, 48],
-            [85, 35, 157],
-            [114, 245, 144],
-            [151, 38, 20],
-            [72, 160, 162],
-        ]
-    )
-    / 256
-)
-
-Plotting.custom_colors = custom_colors
-
-
-simple_granular_room = np.array(
-    [[4, 2, 4, 0],
-    [3, 0, 0, 2],
-    [4, 1, 3, 0],
-    [3, 3, 2, 0]]
-)
-granular_room = np.array(
-    [
-        [4, 2, 3, 0, 3, 4, 4, 4],
-        [4, 4, 3, 2, 3, 2, 3, 4],
-        [4, 4, 2, 0, 4, 2, 4, 0],
-        [0, 2, 4, 4, 3, 0, 0, 2],
-        [3, 3, 4, 0, 4, 1, 3, 0],
-        [2, 4, 2, 3, 3, 3, 2, 0],
-    ]
-)
-room = simple_granular_room
+room = SIMPLE_GRANULAR_ROOM
 name = 'navigation-simple_granular_room'
 
 n_emissions = np.max(room) + 1
 c = np.zeros((n_emissions+1, 3))
-c[:n_emissions] = custom_colors[:n_emissions]
+c[:n_emissions] = Plotting.custom_colors[:n_emissions]
 
 a, x, rc = datagen_structured_obs_room(room, length=5000)
 

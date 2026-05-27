@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 from CSCG_helpers import Plotting, Reasoning
 from experiment import Experiment
-from visualize_stp import SIMPLE_GRANULAR_ROOM
+from rooms import SIMPLE_GRANULAR_ROOM
 
 for experiment_name in Experiment.list_experiments():
     print(f"- {experiment_name}")

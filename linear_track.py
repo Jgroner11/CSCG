@@ -8,23 +8,7 @@ from igraph.drawing import plot
 from matplotlib import cm, colors
 
 from chmm_actions import CHMM, datagen_structured_obs_room, forwardE
-
-custom_colors = (
-    np.array(
-        [
-            [214, 214, 214],
-            [85, 35, 157],
-            [253, 252, 144],
-            [114, 245, 144],
-            [151, 38, 20],
-            [239, 142, 192],
-            [214, 134, 48],
-            [140, 194, 250],
-            [72, 160, 162],
-        ]
-    )
-    / 256
-)
+from CSCG_helpers import Plotting
 
 if not os.path.exists("figures"):
     os.makedirs("figures")
@@ -118,7 +102,7 @@ n_emissions = room.max() + 1
 print('n_emissions', n_emissions)
 
 # Plot the layout of the room
-cmap = colors.ListedColormap(custom_colors[:n_emissions])
+cmap = colors.ListedColormap(Plotting.custom_colors[:n_emissions])
 plt.matshow(room, cmap=cmap)
 plt.title('Figure 1: Room Layout')
 plt.savefig("figures/rectangular_room_layout.pdf")
