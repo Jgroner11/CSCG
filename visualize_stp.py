@@ -55,6 +55,7 @@ x = None
 a = None
 room = None
 cmap = None
+_decoded_states_cache = {}
 
 
 def setup_navigation_model(
@@ -108,6 +109,13 @@ def _context(model=None, observations=None, actions=None):
     return model, observations, actions
 
 
+def _decoded_states(model, observations, actions):
+    key = (id(model), id(observations), id(actions))
+    if key not in _decoded_states_cache:
+        _decoded_states_cache[key] = model.decode(observations, actions)[1]
+    return _decoded_states_cache[key]
+
+
 def _one_hot(nodes, size, value=1.0):
     vector = np.zeros(size)
     for node in nodes:
@@ -140,6 +148,7 @@ def _make_activity_figure(
     flip,
     rotation,
     key_legend=None,
+    states=None,
 ):
     Plotting.plot_heat_map(
         model,
@@ -152,6 +161,7 @@ def _make_activity_figure(
         transition_weights=transition_weights,
         edge_label_mode="int",
         vertex_label_mode="value",
+        states=states,
     )
     image = mpimg.imread(image_path)
     fig, ax = plt.subplots()
@@ -164,7 +174,20 @@ def _make_activity_figure(
     return fig, ax, img_display
 
 
-def _redraw_activity(model, observations, actions, values, transition_weights, image_path, img_display, ax, title, flip, rotation):
+def _redraw_activity(
+    model,
+    observations,
+    actions,
+    values,
+    transition_weights,
+    image_path,
+    img_display,
+    ax,
+    title,
+    flip,
+    rotation,
+    states=None,
+):
     Plotting.plot_heat_map(
         model,
         observations,
@@ -176,6 +199,7 @@ def _redraw_activity(model, observations, actions, values, transition_weights, i
         transition_weights=transition_weights,
         edge_label_mode="int",
         vertex_label_mode="value",
+        states=states,
     )
     img_display.set_data(mpimg.imread(image_path))
     ax.set_title(title)
@@ -187,11 +211,13 @@ def plot_reasoning(
     model=None,
     observations=None,
     actions=None,
+    decoded_states=None,
     image_path=DEFAULT_IMAGE_PATH,
     flip=True,
     rotation=0.9,
 ):
     model, observations, actions = _context(model, observations, actions)
+    states = decoded_states if decoded_states is not None else _decoded_states(model, observations, actions)
     values = _one_hot(targets, sum(model.n_clones))
     transition_weights = model.T
 
@@ -206,6 +232,7 @@ def plot_reasoning(
         flip,
         rotation,
         "Controls: n - step wavefront | q - quit",
+        states=states,
     )
 
     t = 0
@@ -231,6 +258,7 @@ def plot_reasoning(
             f"t={t}",
             flip,
             rotation,
+            states=states,
         )
 
     fig.canvas.mpl_connect("key_press_event", update_image)
@@ -244,11 +272,13 @@ def plot_planning(
     model=None,
     observations=None,
     actions=None,
+    decoded_states=None,
     image_path=DEFAULT_IMAGE_PATH,
     flip=True,
     rotation=0.9,
 ):
     model, observations, actions = _context(model, observations, actions)
+    states = decoded_states if decoded_states is not None else _decoded_states(model, observations, actions)
     initial_values = _one_hot(starts, sum(model.n_clones))
     values = initial_values
 
@@ -263,6 +293,7 @@ def plot_planning(
         flip,
         rotation,
         "Controls: n - propagate | q - quit",
+        states=states,
     )
 
     print("chosen action", Reasoning.select_action(initial_values, transition_weights), "\n")
@@ -289,6 +320,7 @@ def plot_planning(
             f"t={t}",
             flip,
             rotation,
+            states=states,
         )
         print("chosen action", Reasoning.select_action(values, transition_weights), "\n")
 
@@ -302,11 +334,13 @@ def plot_reasoning_then_planning(
     model=None,
     observations=None,
     actions=None,
+    decoded_states=None,
     image_path=DEFAULT_IMAGE_PATH,
     flip=True,
     rotation=0.9,
 ):
     model, observations, actions = _context(model, observations, actions)
+    states = decoded_states if decoded_states is not None else _decoded_states(model, observations, actions)
     initial_values = _one_hot(targets, sum(model.n_clones))
     values = initial_values
     transition_weights = model.T
@@ -324,6 +358,7 @@ def plot_reasoning_then_planning(
         flip,
         rotation,
         "Controls: n - step | m - switch to planning | q - quit",
+        states=states,
     )
 
     def update_image(event):
@@ -350,6 +385,7 @@ def plot_reasoning_then_planning(
                 f"{mode}: t={t}",
                 flip,
                 rotation,
+                states=states,
             )
         elif mode == "Wavefront" and event.key == "m":
             mode = "Planning"
@@ -369,6 +405,7 @@ def plot_reasoning_then_planning(
                 f"{mode}: t={t}",
                 flip,
                 rotation,
+                states=states,
             )
 
     fig.canvas.mpl_connect("key_press_event", update_image)
@@ -378,8 +415,18 @@ def plot_reasoning_then_planning(
 
 def show_graph_and_plan(starts, transition_weights, name=DEFAULT_MODEL_NAME, flip=True, rotation=0.9):
     model, observations, actions = _context()
+    states = _decoded_states(model, observations, actions)
     output_file = os.path.join("figures", f"{name}.png")
-    Plotting.plot_graph(model, observations, actions, output_file=output_file, cmap=cmap, flip=flip, rotation=rotation)
+    Plotting.plot_graph(
+        model,
+        observations,
+        actions,
+        output_file=output_file,
+        cmap=cmap,
+        flip=flip,
+        rotation=rotation,
+        states=states,
+    )
 
     image = mpimg.imread(output_file)
     fig, ax = plt.subplots()

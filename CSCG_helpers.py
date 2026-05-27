@@ -51,10 +51,11 @@ class Plotting:
     
     @staticmethod
     def plot_graph(
-        chmm, x, a, output_file, cmap=cm.Spectral, multiple_episodes=False, vertex_size=30, flip=None, rotation = 0.
+        chmm, x, a, output_file, cmap=cm.Spectral, multiple_episodes=False, vertex_size=30, flip=None, rotation = 0., states=None
     ):
         n_clones = chmm.n_clones
-        states = chmm.decode(x, a)[1]
+        if states is None:
+            states = chmm.decode(x, a)[1]
 
         v = np.unique(states)
         if multiple_episodes:
@@ -100,9 +101,11 @@ class Plotting:
         transition_weights=None,
         edge_label_mode="none",
         vertex_label_mode="state",
+        states=None,
     ):
         # States is a list of which latent node (ie state) is most active at each time step
-        states = chmm.decode(x, a)[1]
+        if states is None:
+            states = chmm.decode(x, a)[1]
 
         v = np.unique(states)
         if multiple_episodes:

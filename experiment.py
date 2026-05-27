@@ -55,6 +55,7 @@ class Experiment:
         self.model_path = self.models_dir / f"{self.name}.pkl"
 
         self.transition_weights = None
+        self.decoded_states = None
         self.wavefront_values = []
         self.planning_values = []
         self.action_plan = []
@@ -91,7 +92,10 @@ class Experiment:
 
         if self.model is None and self.graph is None:
             if self.room is None:
-                raise ValueError("Experiment needs a source: provide room, model, graph, or T.")
+                raise ValueError(
+                    "Experiment needs a source: provide room, model, graph, or T. "
+                    "Use Experiment.get(name) to load an existing experiment."
+                )
             from visualize_stp import setup_navigation_model
 
             self.model, self.observations, self.actions, _rc, self.room, _cmap = setup_navigation_model(
@@ -165,6 +169,7 @@ class Experiment:
             return self.save_visualizations()
 
         self._require_model_context()
+        self._ensure_decoded_states(save=True)
         image_path = str(self.path / f"{self.name}-{mode}.png")
 
         if mode == "wavefront":
@@ -175,6 +180,7 @@ class Experiment:
                 model=self.model,
                 observations=self.observations,
                 actions=self.actions,
+                decoded_states=self.decoded_states,
                 image_path=image_path,
             )
         if mode == "planning":
@@ -187,6 +193,7 @@ class Experiment:
                 model=self.model,
                 observations=self.observations,
                 actions=self.actions,
+                decoded_states=self.decoded_states,
                 image_path=image_path,
             )
         if mode == "path":
@@ -203,12 +210,14 @@ class Experiment:
             model=self.model,
             observations=self.observations,
             actions=self.actions,
+            decoded_states=self.decoded_states,
             image_path=image_path,
         )
 
     def save_visualizations(self):
         """Write graph heatmaps for saved wavefront/planning frames."""
         self._require_model_context()
+        self._ensure_decoded_states(save=True)
         written = []
         transition_weights = self.transition_weights if self.transition_weights is not None else self.T
 
@@ -224,6 +233,7 @@ class Experiment:
                     transition_weights=transition_weights,
                     edge_label_mode="int",
                     vertex_label_mode="value",
+                    states=self.decoded_states,
                 )
                 written.append(str(output_file))
 
@@ -266,11 +276,24 @@ class Experiment:
             arrays["observations"] = self.observations
         if self.actions is not None:
             arrays["actions"] = self.actions
+        if self.decoded_states is None and self.model is not None and self.observations is not None and self.actions is not None:
+            self.decoded_states = self.model.decode(self.observations, self.actions)[1]
+        if self.decoded_states is not None:
+            arrays["decoded_states"] = self.decoded_states
         if self.wavefront_values:
             arrays["wavefront_values"] = np.asarray(self.wavefront_values)
         if self.planning_values:
             arrays["planning_values"] = np.asarray(self.planning_values)
         np.savez_compressed(self.path / "arrays.npz", **arrays)
+
+    def _ensure_decoded_states(self, save=False):
+        if self.decoded_states is not None:
+            return
+        if self.model is None or self.observations is None or self.actions is None:
+            return
+        self.decoded_states = self.model.decode(self.observations, self.actions)[1]
+        if save:
+            self.save_artifacts()
 
     def load_artifacts(self):
         arrays_file = self.path / "arrays.npz"
@@ -283,6 +306,7 @@ class Experiment:
         self.transition_weights = arrays["transition_weights"] if "transition_weights" in arrays else self.T
         self.observations = arrays["observations"] if "observations" in arrays else self.observations
         self.actions = arrays["actions"] if "actions" in arrays else self.actions
+        self.decoded_states = arrays["decoded_states"] if "decoded_states" in arrays else self.decoded_states
         self.wavefront_values = list(arrays["wavefront_values"]) if "wavefront_values" in arrays else []
         self.planning_values = list(arrays["planning_values"]) if "planning_values" in arrays else []
 
@@ -290,8 +314,16 @@ class Experiment:
         if metadata_file.exists():
             with open(metadata_file, "r", encoding="utf-8") as f:
                 metadata = json.load(f)
+            model_path = metadata.get("model_path")
+            if model_path is not None:
+                self.model_path = Path(model_path)
             self.starts = metadata.get("starts", self.starts)
             self.targets = metadata.get("targets", self.targets)
+            self.length = metadata.get("length", self.length)
+            self.clone_count = metadata.get("clone_count", self.clone_count)
+            self.seed = metadata.get("seed", self.seed)
+            self.wavefront_steps = metadata.get("wavefront_steps", self.wavefront_steps)
+            self.planning_steps = metadata.get("planning_steps", self.planning_steps)
             self.chosen_actions = metadata.get("chosen_actions", [])
             self.action_plan = metadata.get("action_plan", [])
             self.state_plan = metadata.get("state_plan", [])
@@ -304,6 +336,11 @@ class Experiment:
             self.model = loaded[0] if isinstance(loaded, tuple) else loaded
 
         return self
+
+    @staticmethod
+    def get(name, experiments_dir="experiments", models_dir="models"):
+        exp = Experiment(name, experiments_dir=experiments_dir, models_dir=models_dir)
+        return exp.load_artifacts()
 
     @staticmethod
     def list_experiments(experiments_dir="experiments"):
@@ -390,7 +427,7 @@ def comparison(experiments):
     rows = []
     for exp in experiments:
         if not isinstance(exp, Experiment):
-            exp = Experiment(exp).load_artifacts()
+            exp = Experiment.get(exp)
         rows.append(
             {
                 "name": exp.name,
