@@ -1,5 +1,4 @@
 import json
-import os
 import pickle
 from datetime import datetime
 from pathlib import Path
@@ -7,16 +6,6 @@ from pathlib import Path
 import numpy as np
 
 from CSCG_helpers import Plotting, Reasoning
-GRANULAR_ROOM = np.array(
-    [
-        [4, 2, 3, 0, 3, 4, 4, 4],
-        [4, 4, 3, 2, 3, 2, 3, 4],
-        [4, 4, 2, 0, 4, 2, 4, 0],
-        [0, 2, 4, 4, 3, 0, 0, 2],
-        [3, 3, 4, 0, 4, 1, 3, 0],
-        [2, 4, 2, 3, 3, 3, 2, 0],
-    ]
-)
 
 
 class Experiment:
@@ -44,7 +33,7 @@ class Experiment:
         models_dir="models",
     ):
         self.name = name
-        self.room = np.asarray(room if room is not None else GRANULAR_ROOM)
+        self.room = None if room is None else np.asarray(room)
         self.model = model
         self.graph = graph
         self.T = None if T is None else np.asarray(T, dtype=float)
@@ -101,6 +90,8 @@ class Experiment:
             return self.transition_weights
 
         if self.model is None and self.graph is None:
+            if self.room is None:
+                raise ValueError("Experiment needs a source: provide room, model, graph, or T.")
             from visualize_stp import setup_navigation_model
 
             self.model, self.observations, self.actions, _rc, self.room, _cmap = setup_navigation_model(
@@ -264,7 +255,9 @@ class Experiment:
         with open(self.path / "metadata.json", "w", encoding="utf-8") as f:
             json.dump(metadata, f, indent=2)
 
-        arrays = {"room": self.room}
+        arrays = {}
+        if self.room is not None:
+            arrays["room"] = self.room
         if self.T is not None:
             arrays["T"] = self.T
         if self.transition_weights is not None:
@@ -285,7 +278,7 @@ class Experiment:
             raise FileNotFoundError(f"No saved arrays found for experiment '{self.name}'.")
 
         arrays = np.load(arrays_file, allow_pickle=True)
-        self.room = arrays["room"]
+        self.room = arrays["room"] if "room" in arrays else self.room
         self.T = arrays["T"] if "T" in arrays else None
         self.transition_weights = arrays["transition_weights"] if "transition_weights" in arrays else self.T
         self.observations = arrays["observations"] if "observations" in arrays else self.observations

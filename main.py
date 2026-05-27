@@ -1,5 +1,6 @@
 from CSCG_helpers import Reasoning
-from experiment import Experiment, GRANULAR_ROOM
+from experiment import Experiment
+from visualize_stp import GRANULAR_ROOM
 
 
 exp1 = Experiment(
@@ -14,5 +15,4 @@ exp1 = Experiment(
 
 exp1.run()
 
-print("chosen actions:", exp1.chosen_actions)
-print("action plan:", exp1.action_plan)
+exp1.visualize(mode="combined")
