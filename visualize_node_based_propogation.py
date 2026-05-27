@@ -10,6 +10,20 @@ from chmm_actions import CHMM, datagen_structured_obs_room
 from CSCG_helpers import Plotting, Reasoning
 
 
+def add_key_legend(fig, text):
+    fig.subplots_adjust(bottom=0.12)
+    fig.text(
+        0.5,
+        0.03,
+        text,
+        ha="center",
+        va="bottom",
+        fontsize=9,
+        color="#222222",
+        bbox={"boxstyle": "round,pad=0.35", "facecolor": "white", "edgecolor": "#bbbbbb", "alpha": 0.9},
+    )
+
+
 def setup_and_train(use_model_cache=True):
     """Load or train the granular-room navigation model."""
     custom_colors = (
@@ -105,10 +119,15 @@ def plot_node_based_propogation(
         start, stop = seq_range
         seq = x[start:stop]
 
+    support_figures = []
+
     if "room" in panels:
         # Render the original room layout.
-        plt.matshow(room, cmap=cmap)
+        room_fig = plt.figure()
+        plt.matshow(room, cmap=cmap, fignum=room_fig.number)
         plt.title("Figure 1: Room Layout")
+        add_key_legend(room_fig, "Controls: n - step activity panels | q - quit")
+        support_figures.append(room_fig)
         plt.savefig("figures/granular_room.pdf")
 
     if "graph" in panels:
@@ -120,6 +139,8 @@ def plot_node_based_propogation(
         fig, ax = plt.subplots()
         ax.axis("off")
         ax.imshow(image)
+        add_key_legend(fig, "Controls: n - step activity panels | q - quit")
+        support_figures.append(fig)
 
     if start_node is None:
         # Return the final forward-message belief after observing a sequence.
@@ -178,6 +199,7 @@ def plot_node_based_propogation(
         ax.set_title(title)
         img_display = ax.imshow(image, cmap="viridis")
         plt.colorbar(img_display, ax=ax, orientation="vertical")
+        add_key_legend(fig, "Controls: n - step | q - quit")
         return fig, ax, img_display
 
     for panel in activity_panels:
@@ -204,6 +226,9 @@ def plot_node_based_propogation(
 
     def update_image(event):
         nonlocal t, forward_v, backward_v, sum_v, product_v
+        if event.key == "q":
+            plt.close("all")
+            return
         if event.key != "n":
             return
 
@@ -238,6 +263,8 @@ def plot_node_based_propogation(
         print()
 
     for fig, _, _ in panel_state.values():
+        fig.canvas.mpl_connect("key_press_event", update_image)
+    for fig in support_figures:
         fig.canvas.mpl_connect("key_press_event", update_image)
 
     plt.show()

@@ -20,6 +20,21 @@ def save_image(t, file, rotation=0):
         chmm, x, a, V, output_file=file, rotation=rotation
     )
 
+
+def add_key_legend(fig, text):
+    fig.subplots_adjust(bottom=0.12)
+    fig.text(
+        0.5,
+        0.03,
+        text,
+        ha='center',
+        va='bottom',
+        fontsize=9,
+        color='#222222',
+        bbox={'boxstyle': 'round,pad=0.35', 'facecolor': 'white', 'edgecolor': '#bbbbbb', 'alpha': 0.9},
+    )
+
+
 def plot_path(start = None, plot_location=True, rotation = 0):
     if start is None:
         start = 0
@@ -32,12 +47,19 @@ def plot_path(start = None, plot_location=True, rotation = 0):
     ax.set_title(f'mess_fwd activity at t={start}')
     img_display = ax.imshow(image, cmap='viridis')
     cbar = plt.colorbar(img_display, ax=ax, orientation='vertical')
+    add_key_legend(fig, 'Controls: n - next | b - back | q - quit')
     if plot_location:
         location_fig, location_ax, text = Plotting.plot_room(room, pos=(rc[start, 0], rc[start, 1]), t=start)
+        add_key_legend(location_fig, 'Controls: n - next | b - back | q - quit')
     t = start
     def update_image(event):
         """Updates the plot with the next image when the specified key is pressed."""
         nonlocal t, text, location_ax
+        if event.key == 'q':
+            plt.close(fig)
+            if plot_location:
+                plt.close(location_fig)
+            return
         if event.key == 'n' or event.key == 'b':  # 'n' key for next time step, 'b' key to back one time step 
             if event.key == 'n' and t < end:
                 t += 1

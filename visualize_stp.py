@@ -115,7 +115,32 @@ def _one_hot(nodes, size, value=1.0):
     return vector
 
 
-def _make_activity_figure(model, observations, actions, values, transition_weights, title, image_path, flip, rotation):
+def _add_key_legend(fig, text):
+    fig.subplots_adjust(bottom=0.12)
+    fig.text(
+        0.5,
+        0.03,
+        text,
+        ha="center",
+        va="bottom",
+        fontsize=9,
+        color="#222222",
+        bbox={"boxstyle": "round,pad=0.35", "facecolor": "white", "edgecolor": "#bbbbbb", "alpha": 0.9},
+    )
+
+
+def _make_activity_figure(
+    model,
+    observations,
+    actions,
+    values,
+    transition_weights,
+    title,
+    image_path,
+    flip,
+    rotation,
+    key_legend=None,
+):
     Plotting.plot_heat_map(
         model,
         observations,
@@ -134,6 +159,8 @@ def _make_activity_figure(model, observations, actions, values, transition_weigh
     ax.set_title(title)
     img_display = ax.imshow(image, cmap="viridis")
     plt.colorbar(img_display, ax=ax, orientation="vertical")
+    if key_legend is not None:
+        _add_key_legend(fig, key_legend)
     return fig, ax, img_display
 
 
@@ -178,12 +205,16 @@ def plot_reasoning(
         image_path,
         flip,
         rotation,
+        "Controls: n - step wavefront | q - quit",
     )
 
     t = 0
 
     def update_image(event):
         nonlocal values, transition_weights, t
+        if event.key == "q":
+            plt.close(event.canvas.figure)
+            return
         if event.key != "n":
             return
         values, transition_weights = Reasoning.STP(values, transition_weights)
@@ -231,6 +262,7 @@ def plot_planning(
         image_path,
         flip,
         rotation,
+        "Controls: n - propagate | q - quit",
     )
 
     print("chosen action", Reasoning.select_action(initial_values, transition_weights), "\n")
@@ -238,6 +270,9 @@ def plot_planning(
 
     def update_image(event):
         nonlocal values, t
+        if event.key == "q":
+            plt.close(event.canvas.figure)
+            return
         if event.key != "n":
             return
         values = Reasoning.propogate(values, transition_weights, initial_values)
@@ -288,10 +323,14 @@ def plot_reasoning_then_planning(
         image_path,
         flip,
         rotation,
+        "Controls: n - step | m - switch to planning | q - quit",
     )
 
     def update_image(event):
         nonlocal mode, t, values, transition_weights, initial_values
+        if event.key == "q":
+            plt.close(event.canvas.figure)
+            return
         if event.key == "n":
             t += 1
             if mode == "Wavefront":
@@ -346,6 +385,7 @@ def show_graph_and_plan(starts, transition_weights, name=DEFAULT_MODEL_NAME, fli
     fig, ax = plt.subplots()
     ax.axis("off")
     ax.imshow(image)
+    _add_key_legend(fig, "Controls: q - quit")
 
     state_seq, obs_seq, action_seq = Reasoning.plan_path(starts[0], transition_weights, model.n_clones)
     print("states", state_seq)
@@ -360,4 +400,3 @@ if __name__ == "__main__":
     starts = [52]
     transition_weights = plot_reasoning_then_planning(targets, starts)
     show_graph_and_plan(starts, transition_weights)
-
