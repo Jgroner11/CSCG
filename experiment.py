@@ -163,20 +163,22 @@ class Experiment:
 
         return self.action_plan or self.chosen_actions
 
-    def visualize(self, mode="combined", interactive=True):
+    def visualize(self, mode="combined", interactive=True, starts=None, targets=None):
         """Use the existing visualization helpers for CSCG-backed experiments."""
         if not interactive:
             return self.save_visualizations()
 
         self._require_model_context()
         self._ensure_decoded_states(save=True)
+        starts = self._as_list(starts) or self.starts
+        targets = self._as_list(targets) or self.targets
         image_path = str(self.path / f"{self.name}-{mode}.png")
 
         if mode == "wavefront":
             from visualize_stp import plot_reasoning
 
             return plot_reasoning(
-                self.targets,
+                targets,
                 model=self.model,
                 observations=self.observations,
                 actions=self.actions,
@@ -188,7 +190,7 @@ class Experiment:
 
             transition_weights = self.transition_weights if self.transition_weights is not None else self.T
             return plot_planning(
-                self.starts,
+                starts,
                 transition_weights,
                 model=self.model,
                 observations=self.observations,
@@ -200,13 +202,13 @@ class Experiment:
             from visualize_stp import show_graph_and_plan
 
             transition_weights = self.transition_weights if self.transition_weights is not None else self.T
-            return show_graph_and_plan(self.starts, transition_weights, name=self.name)
+            return show_graph_and_plan(starts, transition_weights, name=self.name)
 
         from visualize_stp import plot_reasoning_then_planning
 
         return plot_reasoning_then_planning(
-            self.targets,
-            self.starts,
+            targets,
+            starts,
             model=self.model,
             observations=self.observations,
             actions=self.actions,
