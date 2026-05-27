@@ -26,8 +26,8 @@ def setup_navigation_model(
     selected_room=None,
     name=DEFAULT_MODEL_NAME,
     retrain_models=False,
-    length=5000,
-    clone_count=25,
+    seq_length=5000,
+    n_clones=25,
     seed=42,
 ):
     if selected_room is None:
@@ -37,15 +37,15 @@ def setup_navigation_model(
     color_values = np.zeros((n_emissions + 1, 3))
     color_values[:n_emissions] = Plotting.custom_colors[:n_emissions]
 
-    actions, observations, rc = datagen_structured_obs_room(selected_room, length=length)
-    n_clones = np.ones(n_emissions, dtype=np.int64) * clone_count
+    actions, observations, rc = datagen_structured_obs_room(selected_room, length=seq_length)
+    clone_counts = np.ones(n_emissions, dtype=np.int64) * n_clones
 
     model_file = os.path.join("models", f"{name}.pkl")
     if os.path.isfile(model_file) and not retrain_models:
         with open(model_file, "rb") as f:
             model, progression = pickle.load(f)
     else:
-        model = CHMM(n_clones=n_clones, pseudocount=2e-3, x=observations, a=actions, seed=seed)
+        model = CHMM(n_clones=clone_counts, pseudocount=2e-3, x=observations, a=actions, seed=seed)
         progression = model.learn_em_T(observations, actions, n_iter=1000)
         model.pseudocount = 0.0
         model.learn_viterbi_T(observations, actions, n_iter=100)

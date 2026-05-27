@@ -23,8 +23,8 @@ class Experiment:
         starts=None,
         targets=None,
         plan_method=Reasoning.STP,
-        length=5000,
-        clone_count=25,
+        seq_length=5000,
+        n_clones=25,
         seed=42,
         retrain_model=False,
         wavefront_steps=10,
@@ -42,8 +42,8 @@ class Experiment:
         self.starts = self._as_list(starts)
         self.targets = self._as_list(targets)
         self.plan_method = plan_method
-        self.length = length
-        self.clone_count = clone_count
+        self.seq_length = seq_length
+        self.n_clones = n_clones
         self.seed = seed
         self.retrain_model = retrain_model
         self.wavefront_steps = wavefront_steps
@@ -102,8 +102,8 @@ class Experiment:
                 selected_room=self.room,
                 name=self.name,
                 retrain_models=self.retrain_model,
-                length=self.length,
-                clone_count=self.clone_count,
+                seq_length=self.seq_length,
+                n_clones=self.n_clones,
                 seed=self.seed,
             )
 
@@ -253,8 +253,8 @@ class Experiment:
             "model_path": str(self.model_path) if self.model is not None else None,
             "starts": self.starts,
             "targets": self.targets,
-            "length": self.length,
-            "clone_count": self.clone_count,
+            "seq_length": self.seq_length,
+            "n_clones": self.n_clones,
             "seed": self.seed,
             "wavefront_steps": self.wavefront_steps,
             "planning_steps": self.planning_steps,
@@ -321,8 +321,8 @@ class Experiment:
                 self.model_path = Path(model_path)
             self.starts = metadata.get("starts", self.starts)
             self.targets = metadata.get("targets", self.targets)
-            self.length = metadata.get("length", self.length)
-            self.clone_count = metadata.get("clone_count", self.clone_count)
+            self.seq_length = metadata.get("seq_length", self.seq_length)
+            self.n_clones = metadata.get("n_clones", self.n_clones)
             self.seed = metadata.get("seed", self.seed)
             self.wavefront_steps = metadata.get("wavefront_steps", self.wavefront_steps)
             self.planning_steps = metadata.get("planning_steps", self.planning_steps)

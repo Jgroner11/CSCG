@@ -5,24 +5,24 @@ import matplotlib.pyplot as plt
 
 from CSCG_helpers import Plotting, Reasoning
 from experiment import Experiment
-from rooms import SIMPLE_GRANULAR_ROOM
+from rooms import DONUT
 
-for experiment_name in Experiment.list_experiments():
-    print(f"- {experiment_name}")
+# for experiment_name in Experiment.list_experiments():
+#     print(f"- {experiment_name}")
 
 
 # exp = Experiment(
-#     name="navigation-simple_granular_room",
-#     room=SIMPLE_GRANULAR_ROOM,
+#     name="navigation-donut",
+#     room=DONUT,
 #     plan_method=Reasoning.STP,
-#     wavefront_steps=10,
-#     planning_steps=10,
+#     seq_length=5000,
+#     n_clones=25,
 # )
 
 # exp.run()
 
 
-# exp = Experiment.get("navigation-simple_granular_room")
+# exp = Experiment.get("navigation-donut")
 # output_file = os.path.join("figures", f"{exp.name}-graph.png")
 # Plotting.plot_graph(
 #     exp.model,
@@ -40,8 +40,8 @@ for experiment_name in Experiment.list_experiments():
 # plt.show()
 
 
-Experiment.get("navigation-simple_granular_room").visualize(
+Experiment.get("navigation-donut").visualize(
     mode="combined",
-    starts=[10],
-    targets=[28],
+    starts=[23],
+    targets=[70],
 )
