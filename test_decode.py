@@ -142,11 +142,10 @@ if os.path.isfile(file) and not retrain_models:
 else:
     chmm = CHMM(n_clones=n_clones, pseudocount=2e-3, x=x, a=a, seed=42)  # Initialize the model
     progression = chmm.learn_em_T(x, a, n_iter=1000)  # Training
+    chmm.pseudocount = 0.0
+    chmm.learn_viterbi_T(x, a, n_iter=100)
     with open(file, 'wb') as f: # open a text file
         pickle.dump((chmm, progression), protocol=5, file=f) # Serializes model object
-
-chmm.pseudocount = 0.0
-chmm.learn_viterbi_T(x, a, n_iter=100)
 
 # Plot the layout of the room
 cmap = colors.ListedColormap(c[:n_emissions])

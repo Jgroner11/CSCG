@@ -56,11 +56,10 @@ def setup_and_train(use_model_cache=True):
     else:
         chmm = CHMM(n_clones=n_clones, pseudocount=2e-3, x=x, a=a, seed=42)
         progression = chmm.learn_em_T(x, a, n_iter=1000)
+        chmm.pseudocount = 0.0
+        chmm.learn_viterbi_T(x, a, n_iter=100)
         with open(model_file, "wb") as f:
             pickle.dump((chmm, progression), protocol=5, file=f)
-
-    chmm.pseudocount = 0.0
-    chmm.learn_viterbi_T(x, a, n_iter=100)
 
     cmap = colors.ListedColormap(c[:n_emissions])
     return chmm, x, a, room, cmap

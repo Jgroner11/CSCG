@@ -84,11 +84,10 @@ def setup_navigation_model(
     else:
         model = CHMM(n_clones=n_clones, pseudocount=2e-3, x=observations, a=actions, seed=seed)
         progression = model.learn_em_T(observations, actions, n_iter=1000)
+        model.pseudocount = 0.0
+        model.learn_viterbi_T(observations, actions, n_iter=100)
         with open(model_file, "wb") as f:
             pickle.dump((model, progression), protocol=5, file=f)
-
-    model.pseudocount = 0.0
-    model.learn_viterbi_T(observations, actions, n_iter=100)
 
     room_cmap = colors.ListedColormap(color_values[:n_emissions])
     return model, observations, actions, rc, selected_room, room_cmap
@@ -361,5 +360,4 @@ if __name__ == "__main__":
     starts = [52]
     transition_weights = plot_reasoning_then_planning(targets, starts)
     show_graph_and_plan(starts, transition_weights)
-
 
