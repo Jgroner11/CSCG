@@ -64,13 +64,21 @@ class Plotting:
         else:
             T = chmm.C[:, v][:, :, v]
         A = T.sum(0)
-        A /= A.sum(1, keepdims=True)
+        norm = A.sum(1, keepdims=True)
+        norm[norm == 0] = 1
+        A /= norm
 
         g = igraph.Graph.Adjacency((A > 0).tolist())
-        node_labels = np.arange(x.max() + 1).repeat(n_clones)[v]
+        if hasattr(chmm, "state_observations"):
+            node_labels = chmm.state_observations[v]
+        else:
+            node_labels = np.arange(x.max() + 1).repeat(n_clones)[v]
         if multiple_episodes:
             node_labels -= 1
-        colors = [cmap(nl)[:3] for nl in node_labels / node_labels.max()]
+        label_max = node_labels.max()
+        if label_max == 0:
+            label_max = 1
+        colors = [cmap(nl)[:3] for nl in node_labels / label_max]
 
         layout = [Plotting.flip(x, y, flip) for x, y in g.layout("kamada_kawai")]
         layout = [Plotting.rotate(x, y, 90 * rotation) for x, y in layout]

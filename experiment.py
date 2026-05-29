@@ -8,6 +8,23 @@ import numpy as np
 from CSCG_helpers import Plotting, Reasoning
 
 
+DEFAULT_N_OBS = 4
+
+
+class GraphCSCG:
+    """Minimal CSCG-compatible wrapper for graph-derived transition tensors."""
+
+    def __init__(self, T, n_obs=DEFAULT_N_OBS):
+        self.T = np.asarray(T, dtype=float)
+        self.C = self.T
+        n_states = self.T.shape[1]
+        self.n_clones = np.ones(n_states, dtype=np.int64)
+        self.state_observations = np.arange(n_states, dtype=np.int64) % n_obs
+
+    def decode(self, observations, actions):
+        return None, np.arange(self.T.shape[1], dtype=np.int64)
+
+
 class Experiment:
     """Small experiment wrapper around the existing CSCG/STP helpers."""
 
@@ -29,9 +46,59 @@ class Experiment:
         retrain_model=False,
         wavefront_steps=10,
         planning_steps=10,
+        graph_normalize=True,
+        graph_third_column="weight",
         experiments_dir="experiments",
         models_dir="models",
     ):
+        """Create an experiment configuration.
+
+        Parameters
+        ----------
+        name : str
+            Experiment name. Artifacts are saved under ``experiments_dir/name``.
+        room : array-like, optional
+            CSCG room layout used to train/load a navigation model when no model,
+            graph, or transition tensor is provided.
+        model : object, optional
+            Prebuilt model exposing ``T`` or ``C`` as its transition tensor.
+        graph : str, optional
+            Name of a CS Academy graph text file in ``graphs/``. ``"graph1"``
+            and ``"graph1.txt"`` both resolve to ``graphs/graph1.txt``.
+            Graph text can be copied from https://csacademy.com/app/graph_editor/.
+        T : array-like, optional
+            Prebuilt transition tensor with shape ``(actions, states, states)``.
+        observations : array-like, optional
+            Observation sequence used for CSCG-backed visualization context.
+        actions : array-like, optional
+            Action sequence used for CSCG-backed visualization context.
+        starts : int or iterable of int, optional
+            Start state ids for planning.
+        targets : int or iterable of int, optional
+            Target state ids for wavefront propagation.
+        plan_method : callable
+            Planning update function, such as ``Reasoning.STP``.
+        seq_length : int
+            Sequence length used when building a CSCG model from a room.
+        n_clones : int
+            Clone count used when building a CSCG model from a room.
+        seed : int
+            Random seed used when building a CSCG model from a room.
+        retrain_model : bool
+            Whether to retrain the CSCG model when building from a room.
+        wavefront_steps : int
+            Default number of wavefront propagation steps.
+        planning_steps : int
+            Default number of planning propagation steps.
+        graph_normalize : bool
+            Whether graph-derived outgoing weights are normalized per source node.
+        graph_third_column : {"weight", "action"}
+            How to interpret the third number in each graph edge line.
+        experiments_dir : str or Path
+            Directory for saved experiment artifacts.
+        models_dir : str or Path
+            Directory for saved model artifacts.
+        """
         self.name = name
         self.room = None if room is None else np.asarray(room)
         self.model = model
@@ -48,6 +115,8 @@ class Experiment:
         self.retrain_model = retrain_model
         self.wavefront_steps = wavefront_steps
         self.planning_steps = planning_steps
+        self.graph_normalize = graph_normalize
+        self.graph_third_column = graph_third_column
 
         self.experiments_dir = Path(experiments_dir)
         self.models_dir = Path(models_dir)
@@ -114,7 +183,12 @@ class Experiment:
             if not self.model_path.exists():
                 self._save_model()
         else:
-            self.T = self.graph_to_T(self.graph)
+            self.T = self.graph_to_T(
+                self.graph,
+                normalize=self.graph_normalize,
+                third_column=self.graph_third_column,
+            )
+            self._set_graph_model_context()
 
         self.transition_weights = self.T.copy()
         return self.transition_weights
@@ -258,6 +332,9 @@ class Experiment:
             "seed": self.seed,
             "wavefront_steps": self.wavefront_steps,
             "planning_steps": self.planning_steps,
+            "graph": self.graph,
+            "graph_normalize": self.graph_normalize,
+            "graph_third_column": self.graph_third_column,
             "chosen_actions": self.chosen_actions,
             "action_plan": self.action_plan,
             "state_plan": self.state_plan,
@@ -326,6 +403,9 @@ class Experiment:
             self.seed = metadata.get("seed", self.seed)
             self.wavefront_steps = metadata.get("wavefront_steps", self.wavefront_steps)
             self.planning_steps = metadata.get("planning_steps", self.planning_steps)
+            self.graph = metadata.get("graph", self.graph)
+            self.graph_normalize = metadata.get("graph_normalize", self.graph_normalize)
+            self.graph_third_column = metadata.get("graph_third_column", self.graph_third_column)
             self.chosen_actions = metadata.get("chosen_actions", [])
             self.action_plan = metadata.get("action_plan", [])
             self.state_plan = metadata.get("state_plan", [])
@@ -336,6 +416,8 @@ class Experiment:
             with open(self.model_path, "rb") as f:
                 loaded = pickle.load(f)
             self.model = loaded[0] if isinstance(loaded, tuple) else loaded
+        elif self.model is None and self.graph is not None and self.T is not None:
+            self._set_graph_model_context()
 
         return self
 
@@ -356,29 +438,134 @@ class Experiment:
         return (Path(experiments_dir) / name).is_dir()
 
     @staticmethod
-    def graph_to_T(graph, n_actions=4):
-        """Convert common graph/adjacency formats into an action tensor."""
-        if isinstance(graph, dict):
-            n_states = graph.get("n_states")
-            edges = graph.get("edges", [])
-            if n_states is None:
-                n_states = 1 + max(max(src, dst) for src, dst, *_rest in edges)
-            T = np.zeros((n_actions, n_states, n_states), dtype=float)
-            for edge in edges:
-                src, dst = edge[:2]
-                action = edge[2] if len(edge) > 2 else 0
-                weight = edge[3] if len(edge) > 3 else 1.0
-                T[int(action), int(src), int(dst)] = float(weight)
-            return Experiment._normalize_T(T)
+    def graph_to_T(graph, normalize=True, third_column="weight"):
+        """Convert a CS Academy graph text file into an action tensor.
 
-        graph = np.asarray(graph, dtype=float)
-        if graph.ndim == 2:
-            T = np.zeros((n_actions, graph.shape[0], graph.shape[1]), dtype=float)
-            T[0] = graph
-            return Experiment._normalize_T(T)
-        if graph.ndim == 3:
-            return Experiment._normalize_T(graph)
-        raise ValueError("Graph must be an adjacency matrix, an action tensor, or an edge-list dict.")
+        Parameters
+        ----------
+        graph : str
+            File name under ``graphs/``. ``"graph1"`` and ``"graph1.txt"``
+            both resolve to ``graphs/graph1.txt``.
+            Paste graph text copied from https://csacademy.com/app/graph_editor/.
+        normalize : bool
+            If true, normalize each source node's outgoing weights across all
+            actions and destination states so the outgoing total is ``1``.
+            If false, keep the raw weights from the text file.
+        third_column : {"weight", "action"}
+            Interpretation of three-number edge lines. In ``"weight"`` mode,
+            the third number is a float edge weight and actions are assigned by
+            each node's outgoing edge order. In ``"action"`` mode, the third
+            number is a non-negative integer action id and every edge line must
+            have a third number.
+
+        Returns
+        -------
+        np.ndarray
+            Transition tensor with shape ``(n_actions, n_states, n_states)``.
+
+        Notes
+        -----
+        Graph files use CS Academy's pasted text format: ``node`` for isolated
+        nodes, ``src dst`` for directed edges, and ``src dst value`` for
+        weighted or action-labeled directed edges.
+        """
+        if third_column not in ("weight", "action"):
+            raise ValueError("third_column must be 'weight' or 'action'.")
+
+        graph_path = Experiment._resolve_graph_path(graph)
+        try:
+            text = graph_path.read_text(encoding="utf-8")
+        except FileNotFoundError as exc:
+            raise ValueError(f"Graph file not found: {graph_path}") from exc
+
+        nodes = set()
+        edges = []
+        out_counts = {}
+
+        for line_number, raw_line in enumerate(text.splitlines(), start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+
+            parts = line.split()
+            if len(parts) not in (1, 2, 3):
+                raise ValueError(
+                    f"Malformed graph line {line_number}: expected 1, 2, or 3 numbers, got {len(parts)}."
+                )
+
+            if len(parts) == 1:
+                node = Experiment._parse_non_negative_int(parts[0], line_number, "node")
+                nodes.add(node)
+                continue
+
+            src = Experiment._parse_non_negative_int(parts[0], line_number, "source node")
+            dst = Experiment._parse_non_negative_int(parts[1], line_number, "destination node")
+            nodes.update((src, dst))
+
+            if third_column == "action":
+                if len(parts) != 3:
+                    raise ValueError(f"Malformed graph line {line_number}: action mode requires a third value.")
+                action = Experiment._parse_non_negative_int(parts[2], line_number, "action")
+                weight = 1.0
+            else:
+                action = out_counts.get(src, 0)
+                out_counts[src] = action + 1
+                weight = 1.0 if len(parts) == 2 else Experiment._parse_float(parts[2], line_number, "weight")
+
+            edges.append({"src": src, "dst": dst, "action": action, "weight": weight})
+
+        if not nodes:
+            raise ValueError(f"Graph file has no nodes or edges: {graph_path}")
+
+        n_states = max(nodes) + 1
+        if third_column == "action":
+            n_actions = 1 + max((edge["action"] for edge in edges), default=0)
+        else:
+            n_actions = max(out_counts.values(), default=1)
+
+        T = np.zeros((n_actions, n_states, n_states), dtype=float)
+        for edge in edges:
+            T[edge["action"], edge["src"], edge["dst"]] += edge["weight"]
+
+        if normalize:
+            return Experiment._normalize_graph_T(T)
+        return T
+
+    @staticmethod
+    def _resolve_graph_path(graph):
+        if graph is None:
+            raise ValueError("Graph file name is required.")
+
+        graph_path = Path(graph)
+        if graph_path.name != str(graph):
+            raise ValueError("Graph must be a file name in graphs/, such as 'graph1' or 'graph1.txt'.")
+        if graph_path.suffix == "":
+            graph_path = graph_path.with_suffix(".txt")
+        return Path("graphs") / graph_path
+
+    @staticmethod
+    def _parse_non_negative_int(value, line_number, label):
+        try:
+            parsed = int(value)
+        except ValueError as exc:
+            raise ValueError(f"Malformed graph line {line_number}: {label} must be an integer.") from exc
+        if parsed < 0:
+            raise ValueError(f"Malformed graph line {line_number}: {label} must be non-negative.")
+        return parsed
+
+    @staticmethod
+    def _parse_float(value, line_number, label):
+        try:
+            return float(value)
+        except ValueError as exc:
+            raise ValueError(f"Malformed graph line {line_number}: {label} must be numeric.") from exc
+
+    @staticmethod
+    def _normalize_graph_T(T):
+        T = np.asarray(T, dtype=float).copy()
+        norm = T.sum(axis=(0, 2), keepdims=True)
+        norm[norm == 0] = 1
+        return T / norm
 
     @staticmethod
     def _normalize_T(T):
@@ -416,6 +603,13 @@ class Experiment:
         self._require_T()
         if self.model is None or self.observations is None or self.actions is None:
             raise ValueError("Interactive CSCG visualizations require a model, observations, and actions.")
+
+    def _set_graph_model_context(self):
+        self.model = GraphCSCG(self.T)
+        n_states = self.T.shape[1]
+        self.observations = np.arange(n_states, dtype=np.int64) % DEFAULT_N_OBS
+        self.actions = np.zeros(n_states, dtype=np.int64)
+        self.decoded_states = np.arange(n_states, dtype=np.int64)
 
     def _save_model(self):
         if self.model is None:
