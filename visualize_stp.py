@@ -99,19 +99,7 @@ def _add_key_legend(fig, text):
     )
 
 
-def _make_activity_figure(
-    model,
-    observations,
-    actions,
-    values,
-    transition_weights,
-    title,
-    image_path,
-    flip,
-    rotation,
-    key_legend=None,
-    states=None,
-):
+def _plot_to_file(model, observations, actions, values, transition_weights, image_path, flip, rotation, states):
     Plotting.plot_heat_map(
         model,
         observations,
@@ -125,11 +113,17 @@ def _make_activity_figure(
         vertex_label_mode="value",
         states=states,
     )
-    image = mpimg.imread(image_path)
+
+
+def _make_activity_figure(
+    model, observations, actions, values, transition_weights,
+    title, image_path, flip, rotation, key_legend=None, states=None,
+):
+    _plot_to_file(model, observations, actions, values, transition_weights, image_path, flip, rotation, states)
     fig, ax = plt.subplots()
     ax.axis("off")
     ax.set_title(title)
-    img_display = ax.imshow(image, cmap="viridis")
+    img_display = ax.imshow(mpimg.imread(image_path), cmap="viridis")
     plt.colorbar(img_display, ax=ax, orientation="vertical")
     if key_legend is not None:
         _add_key_legend(fig, key_legend)
@@ -137,32 +131,10 @@ def _make_activity_figure(
 
 
 def _redraw_activity(
-    model,
-    observations,
-    actions,
-    values,
-    transition_weights,
-    image_path,
-    img_display,
-    ax,
-    title,
-    flip,
-    rotation,
-    states=None,
+    model, observations, actions, values, transition_weights,
+    image_path, img_display, ax, title, flip, rotation, states=None,
 ):
-    Plotting.plot_heat_map(
-        model,
-        observations,
-        actions,
-        values,
-        output_file=image_path,
-        flip=flip,
-        rotation=rotation,
-        transition_weights=transition_weights,
-        edge_label_mode="int",
-        vertex_label_mode="value",
-        states=states,
-    )
+    _plot_to_file(model, observations, actions, values, transition_weights, image_path, flip, rotation, states)
     img_display.set_data(mpimg.imread(image_path))
     ax.set_title(title)
     ax.figure.canvas.draw()

@@ -1,6 +1,7 @@
 import json
 import pickle
 import re
+import types
 from datetime import datetime
 from pathlib import Path
 
@@ -12,20 +13,6 @@ from CSCG_helpers import Plotting, Reasoning
 
 
 DEFAULT_N_OBS = 4
-
-
-class GraphCSCG:
-    """Minimal CSCG-compatible wrapper for graph-derived transition tensors."""
-
-    def __init__(self, T, n_obs=DEFAULT_N_OBS):
-        self.T = np.asarray(T, dtype=float)
-        self.C = self.T
-        n_states = self.T.shape[1]
-        self.n_clones = np.ones(n_states, dtype=np.int64)
-        self.state_observations = np.arange(n_states, dtype=np.int64) % n_obs
-
-    def decode(self, observations, actions):
-        return None, np.arange(self.T.shape[1], dtype=np.int64)
 
 
 class Experiment:
@@ -641,7 +628,7 @@ class Experiment:
             T[0, edge["src"], edge["dst"]] += edge["weight"]
 
         if normalize:
-            return Experiment._normalize_graph_T(T)
+            return Experiment._normalize_T(T)
         return T
 
     @staticmethod
@@ -672,13 +659,6 @@ class Experiment:
             return float(value)
         except ValueError as exc:
             raise ValueError(f"Malformed graph line {line_number}: {label} must be numeric.") from exc
-
-    @staticmethod
-    def _normalize_graph_T(T):
-        T = np.asarray(T, dtype=float).copy()
-        norm = T.sum(axis=2, keepdims=True)
-        norm[norm == 0] = 1
-        return T / norm
 
     @staticmethod
     def _normalize_T(T):
@@ -722,8 +702,16 @@ class Experiment:
             raise ValueError("Interactive CSCG visualizations require a model, observations, and actions.")
 
     def _set_graph_model_context(self):
-        self.model = GraphCSCG(self.T)
         n_states = self.T.shape[1]
+        T = self.T
+        model = types.SimpleNamespace(
+            T=T,
+            C=T,
+            n_clones=np.ones(n_states, dtype=np.int64),
+            state_observations=np.arange(n_states, dtype=np.int64) % DEFAULT_N_OBS,
+        )
+        model.decode = lambda obs, act: (None, np.arange(n_states, dtype=np.int64))
+        self.model = model
         self.observations = np.arange(n_states, dtype=np.int64) % DEFAULT_N_OBS
         self.actions = np.zeros(n_states, dtype=np.int64)
         self.decoded_states = np.arange(n_states, dtype=np.int64)
