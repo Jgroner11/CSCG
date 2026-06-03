@@ -1,8 +1,11 @@
 import json
 import pickle
+import re
 from datetime import datetime
 from pathlib import Path
 
+import matplotlib.image as mpimg
+import matplotlib.pyplot as plt
 import numpy as np
 
 from CSCG_helpers import Plotting, Reasoning
@@ -46,8 +49,7 @@ class Experiment:
         retrain_model=False,
         wavefront_steps=10,
         planning_steps=10,
-        graph_normalize=True,
-        graph_third_column="weight",
+        graph_normalize=False,
         experiments_dir="experiments",
         models_dir="models",
     ):
@@ -91,9 +93,9 @@ class Experiment:
         planning_steps : int
             Default number of planning propagation steps.
         graph_normalize : bool
-            Whether graph-derived outgoing weights are normalized per source node.
-        graph_third_column : {"weight", "action"}
-            How to interpret the third number in each graph edge line.
+            Whether to normalize outgoing edge weights per source node so they sum
+            to 1, making T a valid probability transition matrix. When False and no
+            edge weights are specified, each existing edge has value 1.
         experiments_dir : str or Path
             Directory for saved experiment artifacts.
         models_dir : str or Path
@@ -116,7 +118,6 @@ class Experiment:
         self.wavefront_steps = wavefront_steps
         self.planning_steps = planning_steps
         self.graph_normalize = graph_normalize
-        self.graph_third_column = graph_third_column
 
         self.experiments_dir = Path(experiments_dir)
         self.models_dir = Path(models_dir)
@@ -186,7 +187,6 @@ class Experiment:
             self.T = self.graph_to_T(
                 self.graph,
                 normalize=self.graph_normalize,
-                third_column=self.graph_third_column,
             )
             self._set_graph_model_context()
 
@@ -237,7 +237,7 @@ class Experiment:
 
         return self.action_plan or self.chosen_actions
 
-    def visualize(self, mode="combined", interactive=True, starts=None, targets=None):
+    def visualize(self, mode="combined", interactive=True, starts=None, targets=None, per_action=False):
         """Use the existing visualization helpers for CSCG-backed experiments."""
         if not interactive:
             return self.save_visualizations()
@@ -246,6 +246,8 @@ class Experiment:
         self._ensure_decoded_states(save=True)
         starts = self._as_list(starts) or self.starts
         targets = self._as_list(targets) or self.targets
+        print(f"targets: {targets}")
+        print(f"starts:  {starts}")
         image_path = str(self.path / f"{self.name}-{mode}.png")
 
         if mode == "wavefront":
@@ -277,6 +279,19 @@ class Experiment:
 
             transition_weights = self.transition_weights if self.transition_weights is not None else self.T
             return show_graph_and_plan(starts, transition_weights, name=self.name)
+
+        if per_action:
+            from visualize_stp import plot_reasoning_then_planning_per_action
+
+            return plot_reasoning_then_planning_per_action(
+                targets,
+                starts,
+                model=self.model,
+                observations=self.observations,
+                actions=self.actions,
+                decoded_states=self.decoded_states,
+                image_path=image_path,
+            )
 
         from visualize_stp import plot_reasoning_then_planning
 
@@ -334,7 +349,6 @@ class Experiment:
             "planning_steps": self.planning_steps,
             "graph": self.graph,
             "graph_normalize": self.graph_normalize,
-            "graph_third_column": self.graph_third_column,
             "chosen_actions": self.chosen_actions,
             "action_plan": self.action_plan,
             "state_plan": self.state_plan,
@@ -405,7 +419,6 @@ class Experiment:
             self.planning_steps = metadata.get("planning_steps", self.planning_steps)
             self.graph = metadata.get("graph", self.graph)
             self.graph_normalize = metadata.get("graph_normalize", self.graph_normalize)
-            self.graph_third_column = metadata.get("graph_third_column", self.graph_third_column)
             self.chosen_actions = metadata.get("chosen_actions", [])
             self.action_plan = metadata.get("action_plan", [])
             self.state_plan = metadata.get("state_plan", [])
@@ -438,8 +451,132 @@ class Experiment:
         return (Path(experiments_dir) / name).is_dir()
 
     @staticmethod
-    def graph_to_T(graph, normalize=True, third_column="weight"):
-        """Convert a CS Academy graph text file into an action tensor.
+    def comparison(experiments, image_dir="figures", flip=True, rotation=0.9, show=True):
+        resolved = []
+        for exp in experiments:
+            if isinstance(exp, Experiment):
+                resolved.append(exp)
+            elif isinstance(exp, str):
+                resolved.append(Experiment.get(exp))
+            else:
+                raise TypeError("experiments must contain Experiment objects or experiment name strings.")
+
+        if not resolved:
+            raise ValueError("comparison needs at least one experiment.")
+
+        image_dir = Path(image_dir)
+        image_dir.mkdir(parents=True, exist_ok=True)
+
+        states = []
+        for exp in resolved:
+            exp._require_model_context()
+            exp._ensure_decoded_states(save=True)
+            if not exp.targets:
+                raise ValueError(f"Experiment '{exp.name}' has no targets for wavefront visualization.")
+            if not exp.starts:
+                raise ValueError(f"Experiment '{exp.name}' has no starts for planning visualization.")
+
+            wavefront_values = exp._one_hot(exp.targets)
+            transition_weights = exp.T.copy()
+            planning_initial = exp._one_hot(exp.starts)
+            states.append({
+                "exp": exp,
+                "wavefront_values": wavefront_values,
+                "transition_weights": transition_weights,
+                "planning_initial": planning_initial,
+                "planning_values": planning_initial.copy(),
+                "step": 0,
+                "image": image_dir / f"comparison-{Experiment._safe_filename(exp.name)}.png",
+            })
+
+        mode = "Wavefront"
+
+        fig_width = max(7, 4.8 * len(resolved))
+        fig, axes_2d = plt.subplots(1, len(resolved), figsize=(fig_width, 5), squeeze=False)
+        axes = axes_2d[0]
+        img_displays = []
+
+        def render(i, state):
+            exp = state["exp"]
+            values = state["wavefront_values"] if mode == "Wavefront" else state["planning_values"]
+            Plotting.plot_heat_map(
+                exp.model,
+                exp.observations,
+                exp.actions,
+                values,
+                output_file=str(state["image"]),
+                flip=flip,
+                rotation=rotation,
+                transition_weights=state["transition_weights"],
+                edge_label_mode="int",
+                vertex_label_mode="value",
+                states=exp.decoded_states,
+            )
+            img_data = mpimg.imread(state["image"])
+            if i < len(img_displays):
+                img_displays[i].set_data(img_data)
+            else:
+                axes[i].axis("off")
+                img_displays.append(axes[i].imshow(img_data, cmap="viridis"))
+            axes[i].set_title(f"{exp.name}\n{mode}: t={state['step']}")
+
+        def redraw_all():
+            for i, state in enumerate(states):
+                render(i, state)
+            fig.canvas.draw_idle()
+
+        def update_image(event):
+            nonlocal mode
+            if event.key == "q":
+                plt.close(event.canvas.figure)
+                return
+            if event.key == "n":
+                if mode == "Wavefront":
+                    for state in states:
+                        state["wavefront_values"], state["transition_weights"] = state["exp"].plan_method(
+                            state["wavefront_values"],
+                            state["transition_weights"],
+                        )
+                        state["step"] += 1
+                else:
+                    for state in states:
+                        state["planning_values"] = Reasoning.propogate(
+                            state["planning_values"],
+                            state["transition_weights"],
+                            state["planning_initial"],
+                        )
+                        state["step"] += 1
+                        print(f"{state['exp'].name} chosen action", Reasoning.select_action(state["planning_values"], state["transition_weights"]), "\n")
+                redraw_all()
+            elif event.key == "m" and mode == "Wavefront":
+                mode = "Planning"
+                for state in states:
+                    state["step"] = 0
+                    state["planning_values"] = state["planning_initial"].copy()
+                    print(f"{state['exp'].name} chosen action", Reasoning.select_action(state["planning_initial"], state["transition_weights"]), "\n")
+                redraw_all()
+
+        redraw_all()
+        fig.suptitle("Experiment Comparison", fontsize=14)
+        fig.text(
+            0.5,
+            0.02,
+            "Controls: n - step | m - switch to planning | q - quit",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            color="#222222",
+            bbox={"boxstyle": "round,pad=0.35", "facecolor": "white", "edgecolor": "#bbbbbb", "alpha": 0.9},
+        )
+        fig.tight_layout(rect=(0, 0.05, 1, 0.95))
+        fig.canvas.mpl_connect("key_press_event", update_image)
+        if show:
+            plt.show()
+        return fig
+
+    @staticmethod
+    def graph_to_T(graph, normalize=True):
+        """Convert a CS Academy graph text file into a single-action transition tensor.
 
         Parameters
         ----------
@@ -448,30 +585,22 @@ class Experiment:
             both resolve to ``graphs/graph1.txt``.
             Paste graph text copied from https://csacademy.com/app/graph_editor/.
         normalize : bool
-            If true, normalize each source node's outgoing weights across all
-            actions and destination states so the outgoing total is ``1``.
-            If false, keep the raw weights from the text file.
-        third_column : {"weight", "action"}
-            Interpretation of three-number edge lines. In ``"weight"`` mode,
-            the third number is a float edge weight and actions are assigned by
-            each node's outgoing edge order. In ``"action"`` mode, the third
-            number is a non-negative integer action id and every edge line must
-            have a third number.
+            If True, normalize each source node's outgoing edge weights so they
+            sum to 1, making T a valid probability transition matrix. If False,
+            edges with no explicit weight are set to 1 and explicit weights are
+            kept as-is.
 
         Returns
         -------
         np.ndarray
-            Transition tensor with shape ``(n_actions, n_states, n_states)``.
+            Transition tensor with shape ``(1, n_states, n_states)``.
 
         Notes
         -----
         Graph files use CS Academy's pasted text format: ``node`` for isolated
-        nodes, ``src dst`` for directed edges, and ``src dst value`` for
-        weighted or action-labeled directed edges.
+        nodes, ``src dst`` for directed edges, and ``src dst weight`` for
+        weighted directed edges.
         """
-        if third_column not in ("weight", "action"):
-            raise ValueError("third_column must be 'weight' or 'action'.")
-
         graph_path = Experiment._resolve_graph_path(graph)
         try:
             text = graph_path.read_text(encoding="utf-8")
@@ -480,7 +609,6 @@ class Experiment:
 
         nodes = set()
         edges = []
-        out_counts = {}
 
         for line_number, raw_line in enumerate(text.splitlines(), start=1):
             line = raw_line.strip()
@@ -501,31 +629,16 @@ class Experiment:
             src = Experiment._parse_non_negative_int(parts[0], line_number, "source node")
             dst = Experiment._parse_non_negative_int(parts[1], line_number, "destination node")
             nodes.update((src, dst))
-
-            if third_column == "action":
-                if len(parts) != 3:
-                    raise ValueError(f"Malformed graph line {line_number}: action mode requires a third value.")
-                action = Experiment._parse_non_negative_int(parts[2], line_number, "action")
-                weight = 1.0
-            else:
-                action = out_counts.get(src, 0)
-                out_counts[src] = action + 1
-                weight = 1.0 if len(parts) == 2 else Experiment._parse_float(parts[2], line_number, "weight")
-
-            edges.append({"src": src, "dst": dst, "action": action, "weight": weight})
+            weight = 1.0 if len(parts) == 2 else Experiment._parse_float(parts[2], line_number, "weight")
+            edges.append({"src": src, "dst": dst, "weight": weight})
 
         if not nodes:
             raise ValueError(f"Graph file has no nodes or edges: {graph_path}")
 
         n_states = max(nodes) + 1
-        if third_column == "action":
-            n_actions = 1 + max((edge["action"] for edge in edges), default=0)
-        else:
-            n_actions = max(out_counts.values(), default=1)
-
-        T = np.zeros((n_actions, n_states, n_states), dtype=float)
+        T = np.zeros((1, n_states, n_states), dtype=float)
         for edge in edges:
-            T[edge["action"], edge["src"], edge["dst"]] += edge["weight"]
+            T[0, edge["src"], edge["dst"]] += edge["weight"]
 
         if normalize:
             return Experiment._normalize_graph_T(T)
@@ -563,7 +676,7 @@ class Experiment:
     @staticmethod
     def _normalize_graph_T(T):
         T = np.asarray(T, dtype=float).copy()
-        norm = T.sum(axis=(0, 2), keepdims=True)
+        norm = T.sum(axis=2, keepdims=True)
         norm[norm == 0] = 1
         return T / norm
 
@@ -573,6 +686,10 @@ class Experiment:
         norm = T.sum(axis=2, keepdims=True)
         norm[norm == 0] = 1
         return T / norm
+
+    @staticmethod
+    def _safe_filename(value):
+        return re.sub(r"[^A-Za-z0-9_.-]+", "_", str(value)).strip("_") or "experiment"
 
     @staticmethod
     def _as_list(values):
@@ -619,18 +736,5 @@ class Experiment:
             pickle.dump((self.model, []), f, protocol=5)
 
 
-def comparison(experiments):
-    rows = []
-    for exp in experiments:
-        if not isinstance(exp, Experiment):
-            exp = Experiment.get(exp)
-        rows.append(
-            {
-                "name": exp.name,
-                "starts": exp.starts,
-                "targets": exp.targets,
-                "chosen_actions": exp.chosen_actions,
-                "action_plan": exp.action_plan,
-            }
-        )
-    return rows
+def comparison(experiments, *args, **kwargs):
+    return Experiment.comparison(experiments, *args, **kwargs)

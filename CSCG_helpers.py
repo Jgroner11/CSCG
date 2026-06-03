@@ -110,6 +110,8 @@ class Plotting:
         edge_label_mode="none",
         vertex_label_mode="state",
         states=None,
+        fixed_layout=None,
+        action=None,
     ):
         # States is a list of which latent node (ie state) is most active at each time step
         if states is None:
@@ -125,21 +127,16 @@ class Plotting:
         norm = A.sum(1, keepdims=True)
         norm[norm == 0] = 1
         A /= norm
-        # A is a transition matrix of only the latent nodes (states) that get activated during walk of path
 
-        # V_displayed represents the activity of all the nodes that are present in the A matrix/graph based on the inputted V activity for all the nodes
         V_displayed_nodes = np.zeros(v.shape)
-        for i, id in enumerate(v):
-            V_displayed_nodes[i] = V[id]
-
-        # print('sum V:', sum(V), 'sum Vdisp:', sum(V_displayed_nodes))
+        for i, node_id in enumerate(v):
+            V_displayed_nodes[i] = V[node_id]
 
         V_disp_norm = V_displayed_nodes
         value_range = np.max(V_displayed_nodes) - np.min(V_displayed_nodes)
         if value_range > 0:
             V_disp_norm = (V_displayed_nodes - np.min(V_displayed_nodes)) / value_range
 
-        # colormap = cm.get_cmap('viridis')
         colormap = matplotlib.colormaps['viridis']
         vertex_colors = colormap(V_disp_norm)
         vertex_colors = [tuple(c) for c in vertex_colors]
@@ -148,17 +145,18 @@ class Plotting:
 
         edge_labels = None
         if transition_weights is not None and edge_label_mode != "none":
-            transition_sum = transition_weights.sum(0)
+            # action=None sums all actions; action=int shows only that action's weights
+            tw = transition_weights[action] if action is not None else transition_weights.sum(0)
             edge_labels = ["" for _ in g.es]
             for index, edge in enumerate(g.es):
-                i = v[edge.source]
-                j = v[edge.target]
-                if i == j:
+                src = v[edge.source]
+                dst = v[edge.target]
+                if src == dst:
                     continue
                 if edge_label_mode == "round":
-                    edge_labels[index] = str(round(transition_sum[j, i], 2))
+                    edge_labels[index] = str(round(tw[dst, src], 2))
                 elif edge_label_mode == "int":
-                    edge_labels[index] = f" {int(transition_sum[j, i])} "
+                    edge_labels[index] = f" {int(tw[dst, src])} "
                 else:
                     raise ValueError(f"Unknown edge_label_mode: {edge_label_mode}")
 
@@ -171,8 +169,11 @@ class Plotting:
         else:
             raise ValueError(f"Unknown vertex_label_mode: {vertex_label_mode}")
 
-        layout = [Plotting.flip(x, y, flip) for x, y in g.layout("kamada_kawai")]
-        layout = [Plotting.rotate(x, y, 90 * rotation) for x, y in layout]
+        if fixed_layout is not None:
+            layout = fixed_layout
+        else:
+            layout = [Plotting.flip(lx, ly, flip) for lx, ly in g.layout("kamada_kawai")]
+            layout = [Plotting.rotate(lx, ly, 90 * rotation) for lx, ly in layout]
 
         out = igraph.plot(
             g,
@@ -185,7 +186,7 @@ class Plotting:
             margin=50,
         )
 
-        return out
+        return out, layout
     
     @staticmethod
     def plot_room(room, pos=None, t=None):
@@ -315,19 +316,21 @@ class Reasoning:
     
     @staticmethod
     def STP(v, T):
-        """Propagate activity while depressing traversed transition weights to encode a wavefront."""
+        """Propagate activity backwards while depressing traversed transition weights to encode a wavefront."""
 
         v_ = np.zeros(v.shape)
-        for i in range(T.shape[0]):
-            v_ += T[i] @ v
+        for a in range(T.shape[0]):
+            v_ += T[a] @ v
         v_ = np.minimum(np.maximum(v_, 0), 1)
 
         ve = np.tile(v, (len(v), 1)).T
 
         T_ = np.zeros(T.shape)
-        for i in range(T.shape[0]):
-            T_[i] = T[i] - ve * T[i].T
-            # T_[i][T_[i] < 0] = 0
+        for a in range(T.shape[0]):
+            T_[a] = T[a] - ve * T[a].T
+
+        # Zero out negative transitions
+        # T_[a][T_[a] < 0] = 0 
 
         return v_, T_
 

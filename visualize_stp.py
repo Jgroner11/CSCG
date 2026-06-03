@@ -375,6 +375,97 @@ def plot_reasoning_then_planning(
     return transition_weights
 
 
+def plot_reasoning_then_planning_per_action(
+    targets,
+    starts,
+    model=None,
+    observations=None,
+    actions=None,
+    decoded_states=None,
+    image_path=DEFAULT_IMAGE_PATH,
+    flip=True,
+    rotation=0.9,
+):
+    ACTION_NAMES = {0: "left", 1: "right", 2: "up", 3: "down"}
+
+    model, observations, actions = _context(model, observations, actions)
+    states = decoded_states if decoded_states is not None else _decoded_states(model, observations, actions)
+    initial_values = _one_hot(targets, sum(model.n_clones))
+    values = initial_values.copy()
+    transition_weights = model.T.copy()
+    mode = "Wavefront"
+    t = 0
+    n_actions = transition_weights.shape[0]
+
+    # Compute shared node layout once from the full graph so all panels line up
+    base_image = image_path.replace(".png", "-base.png")
+    _, shared_layout = Plotting.plot_heat_map(
+        model, observations, actions, values,
+        output_file=base_image,
+        flip=flip, rotation=rotation,
+        transition_weights=transition_weights,
+        edge_label_mode="int",
+        vertex_label_mode="value",
+        states=states,
+    )
+
+    fig, axes_2d = plt.subplots(2, 2, figsize=(9.6, 10), squeeze=False)
+    img_displays = []
+
+    def render_all():
+        for a_idx in range(n_actions):
+            action_image = image_path.replace(".png", f"-action{a_idx}.png")
+            Plotting.plot_heat_map(
+                model, observations, actions, values,
+                output_file=action_image,
+                transition_weights=transition_weights,
+                edge_label_mode="round",
+                vertex_label_mode="value",
+                states=states,
+                fixed_layout=shared_layout,
+                action=a_idx,
+            )
+            ax = axes_2d[a_idx // 2, a_idx % 2]
+            img_data = mpimg.imread(action_image)
+            if a_idx < len(img_displays):
+                img_displays[a_idx].set_data(img_data)
+            else:
+                ax.axis("off")
+                img_displays.append(ax.imshow(img_data, cmap="viridis"))
+            direction = ACTION_NAMES.get(a_idx, "")
+            ax.set_title(f"Action {a_idx} ({direction})\n{mode}: t={t}")
+        fig.canvas.draw_idle()
+
+    render_all()
+    fig.suptitle("Per-Action View", fontsize=14)
+    _add_key_legend(fig, "Controls: n - step | m - switch to planning | q - quit")
+
+    def update_image(event):
+        nonlocal mode, t, values, transition_weights, initial_values
+        if event.key == "q":
+            plt.close(event.canvas.figure)
+            return
+        if event.key == "n":
+            t += 1
+            if mode == "Wavefront":
+                values, transition_weights = Reasoning.STP(values, transition_weights)
+            else:
+                values = Reasoning.propogate(values, transition_weights, initial_values)
+                print("chosen action", Reasoning.select_action(values, transition_weights), "\n")
+            render_all()
+        elif mode == "Wavefront" and event.key == "m":
+            mode = "Planning"
+            t = 0
+            initial_values = _one_hot(starts, sum(model.n_clones))
+            values = initial_values.copy()
+            print("chosen action", Reasoning.select_action(initial_values, transition_weights), "\n")
+            render_all()
+
+    fig.canvas.mpl_connect("key_press_event", update_image)
+    plt.show()
+    return transition_weights
+
+
 def show_graph_and_plan(starts, transition_weights, name=DEFAULT_MODEL_NAME, flip=True, rotation=0.9):
     model, observations, actions = _context()
     states = _decoded_states(model, observations, actions)
