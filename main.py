@@ -13,10 +13,11 @@ from rooms import DONUT, GRANULAR_ROOM, SIMPLE_GRANULAR_ROOM
 
 exp = Experiment(
     name="loop",
-    graph="dloop",
+    graph="loop",
+    graph_normalize=False,
     plan_method=Reasoning.STP,
     starts=[0],
-    targets=[3],
+    targets=[4],
 )
 
 exp.run()
