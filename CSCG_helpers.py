@@ -144,21 +144,40 @@ class Plotting:
         g = igraph.Graph.Adjacency((A > 0).tolist())
 
         edge_labels = None
-        if transition_weights is not None and edge_label_mode != "none":
+        edge_colors = ["#888888"] * len(g.es)  # default grey
+        if transition_weights is not None:
             # action=None sums all actions; action=int shows only that action's weights
             tw = transition_weights[action] if action is not None else transition_weights.sum(0)
-            edge_labels = ["" for _ in g.es]
-            for index, edge in enumerate(g.es):
+
+            # Gather per-edge weights for normalization (including self-loops)
+            raw_weights = []
+            for edge in g.es:
                 src = v[edge.source]
                 dst = v[edge.target]
-                if src == dst:
-                    continue
-                if edge_label_mode == "round":
-                    edge_labels[index] = str(round(tw[dst, src], 2))
-                elif edge_label_mode == "int":
-                    edge_labels[index] = f" {int(tw[dst, src])} "
-                else:
-                    raise ValueError(f"Unknown edge_label_mode: {edge_label_mode}")
+                raw_weights.append(tw[src, dst])
+
+            w_min, w_max = min(raw_weights), max(raw_weights)
+            abs_max = max(abs(w_min), abs(w_max)) or 1.0
+            edge_colormap = matplotlib.colormaps["coolwarm"]
+            edge_colors = []
+            for w in raw_weights:
+                normalized = (w + abs_max) / (2 * abs_max)  # maps [-abs_max, abs_max] -> [0, 1]
+                rgba = edge_colormap(normalized)
+                edge_colors.append(f"#{int(rgba[0]*255):02x}{int(rgba[1]*255):02x}{int(rgba[2]*255):02x}")
+
+            if edge_label_mode != "none":
+                edge_labels = ["" for _ in g.es]
+                for index, edge in enumerate(g.es):
+                    src = v[edge.source]
+                    dst = v[edge.target]
+                    if src == dst:
+                        continue
+                    if edge_label_mode == "round":
+                        edge_labels[index] = str(round(tw[src, dst], 2))
+                    elif edge_label_mode == "int":
+                        edge_labels[index] = f" {int(tw[src, dst])} "
+                    else:
+                        raise ValueError(f"Unknown edge_label_mode: {edge_label_mode}")
 
         if vertex_label_mode == "state":
             vertex_labels = v
@@ -183,6 +202,8 @@ class Plotting:
             vertex_label=vertex_labels,
             vertex_size=vertex_size,
             edge_label=edge_labels,
+            edge_color=edge_colors,
+            edge_width=2,
             margin=50,
         )
 
@@ -316,8 +337,8 @@ class Reasoning:
     
     @staticmethod
     def STP(v, T):
-        """Propagate activity backwards while depressing traversed transition weights to encode a wavefront."""
-
+        """Propagate activity backwards while depressing traversed transition weights to encode a wavefront."""        
+        print("STP1")
         v_ = np.zeros(v.shape)
         for a in range(T.shape[0]):
             v_ += T[a] @ v
@@ -332,7 +353,29 @@ class Reasoning:
         # Zero out negative transitions
         # T_[a][T_[a] < 0] = 0 
 
+
         return v_, T_
+
+    @staticmethod
+    def STP2(v, T):
+        """Propogate activity forward and depress transition weights. Biologically Plausible."""
+
+        print(v)
+        print(T)
+        v_ = np.zeros(v.shape)
+
+        for a in range(T.shape[0]):
+            v_ += v @ T[a]
+        v_ = np.minimum(np.maximum(v_, 0), 1)
+
+        ve = np.tile(v, (len(v), 1)).T
+
+        T_ = np.zeros(T.shape)
+        for a in range(T.shape[0]):
+            T_[a] = T[a] - ve * T[a]
+
+        return v_, T_
+
 
     
     @staticmethod

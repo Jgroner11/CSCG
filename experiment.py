@@ -290,6 +290,7 @@ class Experiment:
             actions=self.actions,
             decoded_states=self.decoded_states,
             image_path=image_path,
+            plan_method=self.plan_method,
         )
 
     def save_visualizations(self):

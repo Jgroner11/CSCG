@@ -12,15 +12,17 @@ from rooms import DONUT, GRANULAR_ROOM, SIMPLE_GRANULAR_ROOM
 
 
 exp = Experiment(
-    name="loop",
-    graph="loop",
+    name="exp",
+    graph="line",
     graph_normalize=False,
-    plan_method=Reasoning.STP,
+    plan_method=Reasoning.STP2,
     starts=[0],
-    targets=[4],
+    targets=[2],
 )
 
 exp.run()
+
+# exp = Experiment.get("loop")
 
 output_file = os.path.join("figures", f"{exp.name}-graph.png")
 Plotting.plot_graph(
@@ -37,6 +39,7 @@ fig, ax = plt.subplots()
 ax.axis("off")
 ax.imshow(image)
 plt.show()
+
 
 exp.visualize(per_action=False)
 

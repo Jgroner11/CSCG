@@ -272,6 +272,7 @@ def plot_reasoning_then_planning(
     image_path=DEFAULT_IMAGE_PATH,
     flip=True,
     rotation=0.9,
+    plan_method=Reasoning.STP,
 ):
     model, observations, actions = _context(model, observations, actions)
     states = decoded_states if decoded_states is not None else _decoded_states(model, observations, actions)
@@ -303,7 +304,7 @@ def plot_reasoning_then_planning(
         if event.key == "n":
             t += 1
             if mode == "Wavefront":
-                values, transition_weights = Reasoning.STP(values, transition_weights)
+                values, transition_weights = plan_method(values, transition_weights)
             else:
                 values = Reasoning.propogate(values, transition_weights, initial_values)
                 print("chosen action", Reasoning.select_action(values, transition_weights), "\n")
