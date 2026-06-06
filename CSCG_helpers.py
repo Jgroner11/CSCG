@@ -376,7 +376,28 @@ class Reasoning:
 
         return v_, T_
 
+    @staticmethod
+    def STP3(v, T, v_accum):
+        """STP with refactory period, not biologically plausible"""
 
+        v_ = np.zeros(v.shape)
+        for i in range(T.shape[0]):
+            v_ += T[i] @ v
+        
+        v_ = np.minimum(np.maximum(v_, 0), 1)
+        v_-= v_accum
+        v_ = np.minimum(np.maximum(v_, 0), 1)
+
+        v_accum += v
+
+        ve = np.tile(v, (len(v), 1)).T
+
+        T_ = np.zeros(T.shape)
+        for i in range(T.shape[0]):
+            T_[i] = T[i] - ve * T[i].T
+            # T_[i][T_[i] < 0] = 0
+
+        return v_, T_, v_accum
     
     @staticmethod
     def propogate(v, T, v_init):
