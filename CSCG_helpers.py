@@ -337,7 +337,8 @@ class Reasoning:
     
     @staticmethod
     def STP(v, T):
-        """Propagate activity backwards while depressing traversed transition weights to encode a wavefront."""        
+        """
+        Propagate activity backwards while depressing traversed transition weights to encode a wavefront."""        
         print("STP1")
         v_ = np.zeros(v.shape)
         for a in range(T.shape[0]):
@@ -357,32 +358,15 @@ class Reasoning:
         return v_, T_
 
     @staticmethod
-    def STP2(v, T):
-        """Propogate activity forward and depress transition weights. Biologically Plausible."""
-
-        print(v)
-        print(T)
-        v_ = np.zeros(v.shape)
-
-        for a in range(T.shape[0]):
-            v_ += v @ T[a]
-        v_ = np.minimum(np.maximum(v_, 0), 1)
-
-        ve = np.tile(v, (len(v), 1)).T
-
-        T_ = np.zeros(T.shape)
-        for a in range(T.shape[0]):
-            T_[a] = T[a] - ve * T[a]
-
-        return v_, T_
-
-    @staticmethod
-    def STP3(v, T, v_accum):
-        """STP with refactory period, not biologically plausible"""
+    def STP2(v, T, v_accum):
+        """
+        Propogate activity backward while depressing traversed transitions
+        refactory period implemented by maintaining a memory of every neuron which fired
+        """
 
         v_ = np.zeros(v.shape)
-        for i in range(T.shape[0]):
-            v_ += T[i] @ v
+        for a in range(T.shape[0]):
+            v_ += T[a] @ v
         
         v_ = np.minimum(np.maximum(v_, 0), 1)
         v_-= v_accum
@@ -393,11 +377,72 @@ class Reasoning:
         ve = np.tile(v, (len(v), 1)).T
 
         T_ = np.zeros(T.shape)
-        for i in range(T.shape[0]):
-            T_[i] = T[i] - ve * T[i].T
-            # T_[i][T_[i] < 0] = 0
+        for a in range(T.shape[0]):
+            T_[a] = T[a] - ve * T[a].T
+            # T_[a][T_[a] < 0] = 0
 
         return v_, T_, v_accum
+
+    @staticmethod
+    def STP3(v, T, v_accum):
+        """
+        Propogate activity forward and depress traversed weights.
+        refactory period implemented by maintaining a memory of every neuron which fired
+
+        """
+
+        print(v)
+        print(T)
+        v_ = np.zeros(v.shape)
+
+        for a in range(T.shape[0]):
+            v_ += v @ T[a]
+        v_ = np.minimum(np.maximum(v_, 0), 1)
+        v_ -= v_accum
+        v_ = np.minimum(np.maximum(v_, 0), 1)
+
+        v_accum += v
+
+        ve = np.tile(v, (len(v), 1)).T
+
+        T_ = np.zeros(T.shape)
+        for a in range(T.shape[0]):
+            T_[a] = T[a] - ve * T[a]
+
+        return v_, T_
+    
+    @staticmethod
+    def STP4(v, T, v_accum):
+        """
+        Propogate activity forward and depress traversed weights.
+        Weights bounded between 0, 1
+        nodes bounded between -1, 1
+        refactory period implemented by making each neuron subtract its activity from the previous step
+
+            TODO, implement this based on the mathematical formulism in notebook
+
+        """
+
+        print(v)
+        print(T)
+        v_ = np.zeros(v.shape)
+
+        for a in range(T.shape[0]):
+            v_ += v @ T[a]
+        v_ = np.minimum(np.maximum(v_, 0), 1)
+        v_ -= v_accum
+        v_ = np.minimum(np.maximum(v_, 0), 1)
+
+        v_accum += v
+
+        ve = np.tile(v, (len(v), 1)).T
+
+        T_ = np.zeros(T.shape)
+        for a in range(T.shape[0]):
+            T_[a] = T[a] - ve * T[a]
+
+        return v_, T_
+
     
     @staticmethod
     def propogate(v, T, v_init):
