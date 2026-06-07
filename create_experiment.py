@@ -12,7 +12,7 @@ if __name__ == "__main__":
     exp = Experiment(
         name="simple_room",
         room=SIMPLE_GRANULAR_ROOM,
-        plan_method=Reasoning.STP,
+        plan_method=Reasoning.STP1,
         starts=[73],
         targets=[28],
     )

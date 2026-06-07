@@ -7,7 +7,7 @@ from CSCG_helpers import Reasoning
 # Experiment.comparison(["loop", "dloop"])
 
 if __name__ == "__main__":
-    exp = Experiment.get("loop")
+    exp = Experiment.get("granular")
     exp.visualize(
-        plan_method = Reasoning.STP
+        plan_method = Reasoning.STP4
     )

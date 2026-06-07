@@ -169,7 +169,7 @@ def plot_reasoning(
             return
         if event.key != "n":
             return
-        values, transition_weights = Reasoning.STP(values, transition_weights)
+        values, transition_weights = Reasoning.STP1(values, transition_weights)
         t += 1
         _redraw_activity(
             model,
@@ -263,7 +263,7 @@ def plot_reasoning_then_planning(
     image_path=DEFAULT_IMAGE_PATH,
     flip=True,
     rotation=0.9,
-    plan_method=Reasoning.STP,
+    plan_method=Reasoning.STP1,
 ):
     model, observations, actions = _context(model, observations, actions)
     states = decoded_states if decoded_states is not None else _decoded_states(model, observations, actions)
@@ -357,7 +357,7 @@ def plot_reasoning_then_planning_per_action(
     image_path=DEFAULT_IMAGE_PATH,
     flip=True,
     rotation=0.9,
-    plan_method=Reasoning.STP,
+    plan_method=Reasoning.STP1,
 ):
     ACTION_NAMES = {0: "left", 1: "right", 2: "up", 3: "down"}
 

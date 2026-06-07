@@ -551,7 +551,7 @@ class Reasoning:
 
     
     @staticmethod
-    def STP(v, T):
+    def STP1(v, T):
         """
         Propagate activity backwards while depressing traversed transition weights to encode a wavefront."""        
         v_ = np.zeros(v.shape)
@@ -604,9 +604,6 @@ class Reasoning:
         refactory period implemented by maintaining a memory of every neuron which fired
 
         """
-
-        print(v)
-        print(T)
         v_ = np.zeros(v.shape)
 
         for a in range(T.shape[0]):
@@ -623,8 +620,8 @@ class Reasoning:
         for a in range(T.shape[0]):
             T_[a] = T[a] - ve * T[a]
 
-        return v_, T_
-    
+        return v_, T_, v_accum
+
     @staticmethod
     def STP4(v, T):
         """

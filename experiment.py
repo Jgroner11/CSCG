@@ -29,7 +29,7 @@ class Experiment:
         actions=None,
         starts=None,
         targets=None,
-        plan_method=Reasoning.STP,
+        plan_method=Reasoning.STP1,
         seq_length=5000,
         n_clones=25,
         seed=42,
@@ -66,7 +66,7 @@ class Experiment:
         targets : int or iterable of int, optional
             Target state ids for wavefront propagation.
         plan_method : callable
-            Planning update function, such as ``Reasoning.STP``.
+            Planning update function, such as ``Reasoning.STP1``.
         seq_length : int
             Sequence length used when building a CSCG model from a room.
         n_clones : int
@@ -224,7 +224,7 @@ class Experiment:
 
         return self.action_plan or self.chosen_actions
 
-    def visualize(self, mode="combined", interactive=True, starts=None, targets=None, per_action=False):
+    def visualize(self, mode="combined", interactive=True, starts=None, targets=None, per_action=False, plan_method=None):
         """Use the existing visualization helpers for CSCG-backed experiments."""
         if not interactive:
             return self.save_visualizations()
@@ -290,7 +290,7 @@ class Experiment:
             actions=self.actions,
             decoded_states=self.decoded_states,
             image_path=image_path,
-            plan_method=self.plan_method,
+            plan_method=plan_method if plan_method is not None else self.plan_method,
         )
 
     def save_visualizations(self):
