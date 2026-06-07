@@ -1,3 +1,4 @@
+import inspect
 import os
 import pickle
 
@@ -56,18 +57,14 @@ def setup_navigation_model(
     return model, observations, actions, rc, selected_room, room_cmap
 
 
-def load_default_context(retrain_models=False):
-    global chmm, x, a, room, cmap
-    chmm, x, a, _rc, room, cmap = setup_navigation_model(retrain_models=retrain_models)
-    return chmm, x, a, room, cmap
-
-
 def _context(model=None, observations=None, actions=None):
+    global chmm, x, a, room, cmap
     model = chmm if model is None else model
     observations = x if observations is None else observations
     actions = a if actions is None else actions
     if model is None or observations is None or actions is None:
-        model, observations, actions, _room, _cmap = load_default_context()
+        chmm, x, a, _rc, room, cmap = setup_navigation_model()
+        model, observations, actions = chmm, x, a
     return model, observations, actions
 
 
@@ -99,27 +96,16 @@ def _add_key_legend(fig, text):
     )
 
 
-def _plot_to_file(model, observations, actions, values, transition_weights, image_path, flip, rotation, states):
-    Plotting.plot_heat_map(
-        model,
-        observations,
-        actions,
-        values,
-        output_file=image_path,
-        flip=flip,
-        rotation=rotation,
-        transition_weights=transition_weights,
-        edge_label_mode="int",
-        vertex_label_mode="value",
-        states=states,
-    )
-
-
 def _make_activity_figure(
     model, observations, actions, values, transition_weights,
     title, image_path, flip, rotation, key_legend=None, states=None,
 ):
-    _plot_to_file(model, observations, actions, values, transition_weights, image_path, flip, rotation, states)
+    Plotting.plot_heat_map(
+        model, observations, actions, values,
+        output_file=image_path, flip=flip, rotation=rotation,
+        transition_weights=transition_weights,
+        edge_label_mode="int", vertex_label_mode="value", states=states,
+    )
     fig, ax = plt.subplots()
     ax.axis("off")
     ax.set_title(title)
@@ -134,7 +120,12 @@ def _redraw_activity(
     model, observations, actions, values, transition_weights,
     image_path, img_display, ax, title, flip, rotation, states=None,
 ):
-    _plot_to_file(model, observations, actions, values, transition_weights, image_path, flip, rotation, states)
+    Plotting.plot_heat_map(
+        model, observations, actions, values,
+        output_file=image_path, flip=flip, rotation=rotation,
+        transition_weights=transition_weights,
+        edge_label_mode="int", vertex_label_mode="value", states=states,
+    )
     img_display.set_data(mpimg.imread(image_path))
     ax.set_title(title)
     ax.figure.canvas.draw()
@@ -282,6 +273,10 @@ def plot_reasoning_then_planning(
     mode = "Wavefront"
     t = 0
 
+    # Detect whether plan_method needs v_accum and initialise it
+    needs_accum = "v_accum" in inspect.signature(plan_method).parameters
+    v_accum = np.zeros(sum(model.n_clones)) if needs_accum else None
+
     fig, ax, img_display = _make_activity_figure(
         model,
         observations,
@@ -297,14 +292,18 @@ def plot_reasoning_then_planning(
     )
 
     def update_image(event):
-        nonlocal mode, t, values, transition_weights, initial_values
+        nonlocal mode, t, values, transition_weights, initial_values, v_accum
         if event.key == "q":
             plt.close(event.canvas.figure)
             return
         if event.key == "n":
             t += 1
             if mode == "Wavefront":
-                values, transition_weights = plan_method(values, transition_weights)
+                if needs_accum:
+                    result = plan_method(values, transition_weights, v_accum)
+                    values, transition_weights, v_accum = result
+                else:
+                    values, transition_weights = plan_method(values, transition_weights)
             else:
                 values = Reasoning.propogate(values, transition_weights, initial_values)
                 print("chosen action", Reasoning.select_action(values, transition_weights), "\n")
@@ -358,6 +357,7 @@ def plot_reasoning_then_planning_per_action(
     image_path=DEFAULT_IMAGE_PATH,
     flip=True,
     rotation=0.9,
+    plan_method=Reasoning.STP,
 ):
     ACTION_NAMES = {0: "left", 1: "right", 2: "up", 3: "down"}
 
@@ -369,6 +369,8 @@ def plot_reasoning_then_planning_per_action(
     mode = "Wavefront"
     t = 0
     n_actions = transition_weights.shape[0]
+    needs_accum = "v_accum" in inspect.signature(plan_method).parameters
+    v_accum = np.zeros(sum(model.n_clones)) if needs_accum else None
 
     # Compute shared node layout once from the full graph so all panels line up
     base_image = image_path.replace(".png", "-base.png")
@@ -414,14 +416,18 @@ def plot_reasoning_then_planning_per_action(
     _add_key_legend(fig, "Controls: n - step | m - switch to planning | q - quit")
 
     def update_image(event):
-        nonlocal mode, t, values, transition_weights, initial_values
+        nonlocal mode, t, values, transition_weights, initial_values, v_accum
         if event.key == "q":
             plt.close(event.canvas.figure)
             return
         if event.key == "n":
             t += 1
             if mode == "Wavefront":
-                values, transition_weights = Reasoning.STP(values, transition_weights)
+                if needs_accum:
+                    result = plan_method(values, transition_weights, v_accum)
+                    values, transition_weights, v_accum = result
+                else:
+                    values, transition_weights = plan_method(values, transition_weights)
             else:
                 values = Reasoning.propogate(values, transition_weights, initial_values)
                 print("chosen action", Reasoning.select_action(values, transition_weights), "\n")

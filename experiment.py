@@ -439,6 +439,17 @@ class Experiment:
         return (Path(experiments_dir) / name).is_dir()
 
     @staticmethod
+    def delete_all_experiments(experiments_dir="experiments"):
+        import shutil
+        root = Path(experiments_dir)
+        if not root.exists():
+            return
+        for path in root.iterdir():
+            if path.is_dir():
+                shutil.rmtree(path)
+        print(f"Deleted all experiments in '{root}'.")
+
+    @staticmethod
     def comparison(experiments, image_dir="figures", flip=True, rotation=0.9, show=True):
         resolved = []
         for exp in experiments:

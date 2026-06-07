@@ -5,12 +5,219 @@ import sys
 
 import igraph
 import matplotlib
+import matplotlib.backends.backend_agg as _mpl_agg
+import matplotlib.figure as _mpl_figure
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import cm, colors
 
 from chmm_actions import CHMM, datagen_structured_obs_room, forwardE
+
+
+# ── Private Bézier helpers for edge-label placement ───────────────────────────
+
+def _bezier_cubic(x0, y0, xc1, yc1, xc2, yc2, x3, y3, t):
+    mt = 1.0 - t
+    return (mt**3*x0 + 3*t*mt**2*xc1 + 3*t**2*mt*xc2 + t**3*x3,
+            mt**3*y0 + 3*t*mt**2*yc1 + 3*t**2*mt*yc2 + t**3*y3)
+
+
+def _intersect_bezier_circle(x0, y0, xc1, yc1, xc2, yc2, x3, y3, radius, max_iter=10):
+    """Binary-search the Bézier for the point at distance=radius from (x3,y3)."""
+    def dist(ax, ay): return math.hypot(ax - x3, ay - y3)
+    d_st = math.hypot(x3 - x0, y3 - y0)
+    precision = radius / 20.0
+    t0, t1 = 1.0, 1.0 - radius / d_st
+    xt1, yt1 = _bezier_cubic(x0, y0, xc1, yc1, xc2, yc2, x3, y3, t1)
+    d0, d1 = 0.0, dist(xt1, yt1)
+    for _ in range(max_iter):
+        if abs(d1 - radius) <= precision:
+            break
+        if ((d1 - radius) > 0) != ((d0 - radius) > 0):
+            t_new = (t0 + t1) / 2.0
+        elif abs(d1 - radius) < abs(d0 - radius):
+            t_new = t1 + (t1 - t0) / 2.0
+        else:
+            t_new = t1 - (t1 - t0)
+        t_new = max(0.0, min(1.0, t_new))
+        t0, t1 = t1, t_new
+        d0 = d1
+        xt1, yt1 = _bezier_cubic(x0, y0, xc1, yc1, xc2, yc2, x3, y3, t1)
+        d1 = dist(xt1, yt1)
+    return _bezier_cubic(x0, y0, xc1, yc1, xc2, yc2, x3, y3, t1)
+
+
+def _circle_intersection(cx, cy, sx, sy, radius):
+    angle = math.atan2(cy - sy, cx - sx)
+    return cx - radius * math.cos(angle), cy - radius * math.sin(angle)
+
+
+def _arrowhead(x_tip, y_tip, x_dest, y_dest):
+    arrow_size, arrow_width = 15.0, 10.0
+    angle = math.atan2(y_dest - y_tip, x_dest - x_tip)
+    ap = [
+        (x_tip - arrow_size * math.cos(angle - math.pi / arrow_width),
+         y_tip - arrow_size * math.sin(angle - math.pi / arrow_width)),
+        (x_tip - arrow_size * math.cos(angle + math.pi / arrow_width),
+         y_tip - arrow_size * math.sin(angle + math.pi / arrow_width)),
+    ]
+    xm = (ap[0][0] + ap[1][0]) / 2.0
+    ym = (ap[0][1] + ap[1][1]) / 2.0
+    return ap, xm, ym
+
+
+def _reconstruct_curved_edge(x1, y1, x_dest, y_dest, curved, vertex_size):
+    """Exact replica of igraph's ArrowEdgeDrawer cubic Bézier (curved != 0)."""
+    radius = vertex_size / 2.0
+    aux1 = ((2*x1+x_dest)/3.0 - curved*0.5*(y_dest-y1),
+             (2*y1+y_dest)/3.0 + curved*0.5*(x_dest-x1))
+    aux2 = ((x1+2*x_dest)/3.0 - curved*0.5*(y_dest-y1),
+             (y1+2*y_dest)/3.0 + curved*0.5*(x_dest-x1))
+    x_tip, y_tip = _intersect_bezier_circle(
+        x1, y1, aux1[0], aux1[1], aux2[0], aux2[1], x_dest, y_dest, radius)
+    ap, xm, ym = _arrowhead(x_tip, y_tip, x_dest, y_dest)
+    bvx, bvy = ap[0][0]-ap[1][0], ap[0][1]-ap[1][1]
+    aux1f = ((2*x1+xm)/3.0 - curved*0.5*(ym-y1),
+              (2*y1+ym)/3.0 + curved*0.5*(xm-x1))
+    aux2f = ((x1+2*xm)/3.0 - curved*0.5*(ym-y1),
+              (y1+2*ym)/3.0 + curved*0.5*(xm-x1))
+    bl2 = bvx**2 + bvy**2
+    if bl2 > 0:
+        off = ((xm-aux2f[0])*bvx + (ym-aux2f[1])*bvy) / bl2
+        aux2f = (aux2f[0]+bvx*off, aux2f[1]+bvy*off)
+    bezier_verts = [(x1,y1),(aux1f[0],aux1f[1]),(aux2f[0],aux2f[1]),(xm,ym)]
+    return bezier_verts, (x_tip, y_tip), ap
+
+
+def _find_exit_t(bx0, by0, bx1, by1, bx2, by2, bx3, by3, cx, cy, radius, samples=200):
+    """Find the smallest t > 0 where the Bézier exits the circle (cx,cy,radius)."""
+    ts = np.linspace(0, 1, samples)
+    for i in range(1, len(ts)):
+        px, py = _bezier_cubic(bx0, by0, bx1, by1, bx2, by2, bx3, by3, ts[i])
+        if math.hypot(px - cx, py - cy) >= radius:
+            lo, hi = ts[i-1], ts[i]
+            for _ in range(20):
+                mid = (lo + hi) / 2
+                pmx, pmy = _bezier_cubic(bx0, by0, bx1, by1, bx2, by2, bx3, by3, mid)
+                if math.hypot(pmx - cx, pmy - cy) < radius:
+                    lo = mid
+                else:
+                    hi = mid
+            return (lo + hi) / 2
+    return 0.0
+
+
+def _edge_point(t, x1, y1, x_dest, y_dest, curved, vertex_size, samples=300):
+    """Return (x, y) at arc-length fraction t in [0,1] along the VISIBLE edge stroke.
+
+    t=0  → where the stroke exits the source vertex circle.
+    t=1  → the arrow tip at the destination vertex circle.
+    t=0.5 → the true visual midpoint of the drawn edge.
+    """
+    radius = vertex_size / 2.0
+
+    if curved:
+        bezier_verts, (x_tip, y_tip), _ = _reconstruct_curved_edge(
+            x1, y1, x_dest, y_dest, curved, vertex_size)
+        (bx0, by0), (bx1, by1), (bx2, by2), (bx3, by3) = bezier_verts
+
+        t_exit = _find_exit_t(bx0, by0, bx1, by1, bx2, by2, bx3, by3,
+                               x1, y1, radius, samples)
+        ts_all = np.linspace(t_exit, 1.0, samples)
+        pts = [_bezier_cubic(bx0, by0, bx1, by1, bx2, by2, bx3, by3, ti)
+               for ti in ts_all]
+
+        dists = [0.0]
+        for i in range(1, len(pts)):
+            dists.append(dists[-1] + math.hypot(pts[i][0]-pts[i-1][0],
+                                                  pts[i][1]-pts[i-1][1]))
+        total = dists[-1]
+        target = t * total
+        for i in range(1, len(dists)):
+            if dists[i] >= target:
+                frac = (target - dists[i-1]) / max(dists[i] - dists[i-1], 1e-12)
+                raw_t = ts_all[i-1] + frac * (ts_all[i] - ts_all[i-1])
+                return _bezier_cubic(bx0, by0, bx1, by1, bx2, by2, bx3, by3, raw_t)
+        return pts[-1]
+    else:
+        radius = vertex_size / 2.0
+        x_tip, y_tip = _circle_intersection(x_dest, y_dest, x1, y1, radius)
+        _, (xm, ym), _, _ = _reconstruct_straight_edge_parts(x1, y1, x_dest, y_dest, vertex_size)
+        angle = math.atan2(y_dest - y1, x_dest - x1)
+        x_exit = x1 + radius * math.cos(angle)
+        y_exit = y1 + radius * math.sin(angle)
+        return x_exit + t * (xm - x_exit), y_exit + t * (ym - y_exit)
+
+
+def _reconstruct_straight_edge_parts(x1, y1, x_dest, y_dest, vertex_size):
+    radius = vertex_size / 2.0
+    x_tip, y_tip = _circle_intersection(x_dest, y_dest, x1, y1, radius)
+    ap, xm, ym = _arrowhead(x_tip, y_tip, x_dest, y_dest)
+    return (x1, y1), (xm, ym), (x_tip, y_tip), ap
+
+
+def _annotate_edge_labels(output_file, g, layout, curved_vals, edge_labels,
+                          vertex_size=30, margin=50, image_size=600):
+    """Load the igraph-saved PNG and overlay edge labels at Bézier arc-length midpoints."""
+    orig = mpimg.imread(output_file)
+    # mpimg reads PNG as float32 [0,1]; convert to uint8 for stable handling
+    if orig.dtype != np.uint8:
+        orig_u8 = (np.clip(orig, 0, 1) * 255).astype(np.uint8)
+    else:
+        orig_u8 = orig
+    h_px, w_px = orig_u8.shape[:2]
+
+    # Layout → pixel coordinate mapping (igraph fit_into, keep_aspect_ratio=False)
+    arr = np.array(layout)
+    lx_min, ly_min = arr.min(axis=0)
+    lx_max, ly_max = arr.max(axis=0)
+    draw_min = float(margin)
+    draw_max = float(image_size - margin)
+    draw_span = draw_max - draw_min
+    lx_span = lx_max - lx_min or 2.0
+    ly_span = ly_max - ly_min or 2.0
+
+    def to_px(lx, ly):
+        return (draw_min + (lx - lx_min) / lx_span * draw_span,
+                draw_min + (ly - ly_min) / ly_span * draw_span)
+
+    pixel_coords = [to_px(lx, ly) for lx, ly in layout]
+
+    # Build matplotlib figure at exact pixel dimensions (non-interactive Agg)
+    dpi = 100
+    fig = _mpl_figure.Figure(figsize=(w_px / dpi, h_px / dpi), dpi=dpi)
+    canvas = _mpl_agg.FigureCanvasAgg(fig)
+    ax = fig.add_axes([0, 0, 1, 1])
+    ax.set_xlim(0, w_px)
+    ax.set_ylim(h_px, 0)   # y-axis: 0 at top, h_px at bottom
+    ax.axis('off')
+    ax.imshow(orig_u8, origin='upper', extent=[0, w_px, h_px, 0], aspect='auto')
+
+    for edge in g.es:
+        if edge.source == edge.target:
+            continue
+        label_text = edge_labels[edge.index]
+        if not label_text or not str(label_text).strip():
+            continue
+
+        x1, y1         = pixel_coords[edge.source]
+        x_dest, y_dest = pixel_coords[edge.target]
+        curved         = curved_vals[edge.index]
+
+        mx, my = _edge_point(0.5, x1, y1, x_dest, y_dest, curved, vertex_size)
+
+        ax.text(mx, my, str(label_text),
+                ha='center', va='center', fontsize=6, fontweight='bold', color='black',
+                bbox=dict(boxstyle='round,pad=0.15', facecolor='white',
+                          edgecolor='none', alpha=0.8),
+                zorder=11)
+
+    canvas.draw()
+    buf = canvas.buffer_rgba()
+    w_out, h_out = canvas.get_width_height()
+    img_out = np.frombuffer(buf, dtype=np.uint8).reshape(h_out, w_out, 4)
+    mpimg.imsave(output_file, img_out)
 
 
 class Plotting:
@@ -201,11 +408,19 @@ class Plotting:
             vertex_color=vertex_colors,
             vertex_label=vertex_labels,
             vertex_size=vertex_size,
-            edge_label=edge_labels,
+            edge_label=None,          # labels are drawn by _annotate_edge_labels below
             edge_color=edge_colors,
             edge_width=2,
             margin=50,
         )
+
+        # Overlay edge labels at Bézier arc-length midpoints
+        if edge_labels is not None:
+            curved_vals = igraph.autocurve(g, attribute=None, default=0)
+            _annotate_edge_labels(
+                output_file, g, layout, curved_vals, edge_labels,
+                vertex_size=vertex_size, margin=50, image_size=600,
+            )
 
         return out, layout
     
@@ -412,15 +627,12 @@ class Reasoning:
         return v_, T_
     
     @staticmethod
-    def STP4(v, T, v_accum):
+    def STP4(v, T):
         """
         Propogate activity forward and depress traversed weights.
         Weights bounded between 0, 1
         nodes bounded between -1, 1
         refactory period implemented by making each neuron subtract its activity from the previous step
-
-            TODO, implement this based on the mathematical formulism in notebook
-
         """
 
         print(v)
@@ -429,11 +641,9 @@ class Reasoning:
 
         for a in range(T.shape[0]):
             v_ += v @ T[a]
-        v_ = np.minimum(np.maximum(v_, 0), 1)
-        v_ -= v_accum
-        v_ = np.minimum(np.maximum(v_, 0), 1)
-
-        v_accum += v
+        
+        v_ -= v / 2.0
+        v_ = np.minimum(np.maximum(v_, -1), 1)
 
         ve = np.tile(v, (len(v), 1)).T
 
@@ -441,6 +651,7 @@ class Reasoning:
         for a in range(T.shape[0]):
             T_[a] = T[a] - ve * T[a]
 
+        T_ = np.minimum(np.maximum(T_, 0), 1)
         return v_, T_
 
     
