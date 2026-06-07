@@ -10,12 +10,11 @@ from rooms import DONUT, GRANULAR_ROOM, SIMPLE_GRANULAR_ROOM
 
 if __name__ == "__main__":
     exp = Experiment(
-        name="exp",
-        graph="line",
-        graph_normalize=False,
+        name="simple_room",
+        room=SIMPLE_GRANULAR_ROOM,
         plan_method=Reasoning.STP,
-        starts=[0],
-        targets=[2],
+        starts=[73],
+        targets=[28],
     )
 
     exp.run()

@@ -554,7 +554,6 @@ class Reasoning:
     def STP(v, T):
         """
         Propagate activity backwards while depressing traversed transition weights to encode a wavefront."""        
-        print("STP1")
         v_ = np.zeros(v.shape)
         for a in range(T.shape[0]):
             v_ += T[a] @ v
